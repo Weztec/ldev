@@ -1,0 +1,11 @@
+/control-app/vendor/
+/control-app/node_modules/
+/control-app/public/build/
+/control-app/.env
+/control-app/storage/
+/control-app/bootstrap/cache/
+
+.DS_Store
+*.log
+
+/.repository-tokens
