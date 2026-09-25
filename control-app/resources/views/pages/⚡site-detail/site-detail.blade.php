@@ -240,10 +240,7 @@
             </p>
 
             @if($tunnelUrl)
-                <div class="flex items-center gap-2 flex-wrap">
-                    <a href="{{ $tunnelUrl }}" target="_blank" class="text-sm text-blue-500 break-all">{{ $tunnelUrl }}</a>
-                    <flux:button size="sm" variant="ghost" icon="clipboard-document" onclick="navigator.clipboard.writeText('{{ $tunnelUrl }}')">Copy</flux:button>
-                </div>
+                <x-copy-command :text="$tunnelUrl" :terminal="false" :link="true" />
             @endif
 
             <flux:button

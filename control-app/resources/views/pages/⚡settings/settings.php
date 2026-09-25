@@ -151,6 +151,7 @@ new class extends Component {
             $raw = Setting::get("version_check_{$key}");
             $this->versionChecks[$key] = $raw ? json_decode($raw, true) : null;
         }
+        $this->versionChecks['dnf'] = (new \App\Services\StackUpdateChecker)->pending($this->versionChecks['dnf'] ?? null);
 
         $this->versionCheckLastRun = Setting::get('version_check_last_run');
     }

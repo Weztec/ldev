@@ -113,7 +113,7 @@
                 $ldev = $versionChecks['ldev'] ?? null;
                 $ldevRepository = config('ldev.github_repository');
             @endphp
-            <div class="py-1.5" x-data="{ open: {{ request()->boolean('update') ? 'true' : 'false' }}, copied: false }">
+            <div class="py-1.5" x-data="{ open: {{ request()->boolean('update') ? 'true' : 'false' }} }">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <span class="text-gray-500 dark:text-gray-400">Linux Dev {{ config('ldev.version') }} ({{ ucfirst(config('ldev.platform')) }})</span>
                     @if(!$ldevRepository)
@@ -133,12 +133,7 @@
                 @if($ldevRepository && \App\Services\VersionChecker::ldevUpdateAvailable($ldev))
                     <div x-show="open" x-cloak class="mt-2 p-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 space-y-2">
                         <p class="text-xs text-gray-600 dark:text-gray-300">Updating needs your password for <span class="font-mono">sudo</span>, so run this in a terminal. Your sites, settings and tokens are kept, and the dashboard restarts on the new version when it finishes.</p>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <pre x-ref="cmd" class="flex-1 min-w-0 overflow-x-auto px-3 py-2 rounded bg-gray-900 text-gray-100 text-xs">{{ \App\Services\VersionChecker::ldevUpdateCommand() }}</pre>
-                            <flux:button size="sm" variant="filled" color="blue" icon="clipboard-document" x-on:click="navigator.clipboard.writeText($refs.cmd.innerText).then(() => { copied = true; setTimeout(() => copied = false, 2000) })">
-                                <span x-text="copied ? 'Copied' : 'Copy'">Copy</span>
-                            </flux:button>
-                        </div>
+                        <x-copy-command :text="\App\Services\VersionChecker::ldevUpdateCommand()" />
                         @if(! config('ldev.source_path'))
                             <p class="text-xs text-gray-500 dark:text-gray-400">Replace the folder with wherever you cloned Linux Dev. It's filled in automatically after your next <span class="font-mono">deploy-app.sh</span>.</p>
                         @endif
@@ -237,10 +232,7 @@
                                 </div>
                             @endforeach
                         </div>
-                        <div class="flex items-center gap-2">
-                            <code class="flex-1 text-xs font-mono break-all bg-gray-50 dark:bg-gray-900 rounded px-2 py-1">{{ $upgradeCommand }}</code>
-                            <flux:button size="sm" variant="ghost" icon="clipboard-document" x-on:click="navigator.clipboard.writeText(@js($upgradeCommand))">Copy</flux:button>
-                        </div>
+                        <x-copy-command :text="$upgradeCommand" />
                         <p class="text-xs text-gray-400 dark:text-gray-500">Run this in a terminal. The dashboard never runs sudo itself.</p>
                     @endif
                 </div>

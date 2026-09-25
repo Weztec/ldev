@@ -38,7 +38,7 @@ class UpdateSummary
             }
         }
 
-        $dnf = $this->read('dnf');
+        $dnf = (new StackUpdateChecker)->pending($this->read('dnf'));
         $count = count($dnf['packages'] ?? []);
         if ($count > 0) {
             $notices[] = ['key' => 'dnf', 'label' => 'System packages', 'detail' => $count . ' update' . ($count === 1 ? '' : 's') . ' available'];

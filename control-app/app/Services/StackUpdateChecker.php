@@ -61,6 +61,37 @@ class StackUpdateChecker
             ->all();
     }
 
+    public function pending(?array $result): ?array
+    {
+        if (!$result || empty($result['packages'])) {
+            return $result;
+        }
+
+        $names = implode(' ', array_map(fn ($p) => escapeshellarg($p['name']), $result['packages']));
+        $output = Process::run('rpm -q --qf ' . escapeshellarg('%{NAME}|%{EPOCH}:%{VERSION}-%{RELEASE}\n') . ' ' . $names)->output();
+
+        $installed = [];
+        foreach (explode("\n", trim($output)) as $line) {
+            $parts = explode('|', trim($line), 2);
+            if (count($parts) === 2) {
+                $installed[$parts[0]] = str_replace('(none):', '', $parts[1]);
+            }
+        }
+
+        $result['packages'] = array_values(array_filter(array_map(function ($package) use ($installed) {
+            $current = $installed[$package['name']] ?? null;
+            if ($current === null) {
+                return $package;
+            }
+            $script = sprintf('%%{lua: print(rpm.vercmp("%s", "%s"))}', addslashes($current), addslashes($package['available']));
+            $cmp = trim(Process::run('rpm --eval ' . escapeshellarg($script))->output());
+
+            return $cmp === '-1' ? ['installed' => $current] + $package : null;
+        }, $result['packages'])));
+
+        return $result;
+    }
+
     protected function parse(string $output): array
     {
         $rows = [];
