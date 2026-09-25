@@ -83,20 +83,20 @@ if [[ ! -d "/home/$SUDO_USER/.nvm" ]]; then
 fi
 
 curl -fSL --retry 3 --retry-delay 2 https://github.com/axllent/mailpit/releases/latest/download/mailpit-linux-amd64.tar.gz | tar xzf - -C /usr/local/bin mailpit
+curl -fSL --retry 3 --retry-delay 2 -o /usr/local/bin/meilisearch.new https://github.com/meilisearch/meilisearch/releases/latest/download/meilisearch-linux-amd64
+chmod 0755 /usr/local/bin/meilisearch.new
+mv /usr/local/bin/meilisearch.new /usr/local/bin/meilisearch
 
-MINIO_PINNED_RELEASE="RELEASE.2025-09-07T16-13-09Z"
-MINIO_EXTRACT_CONTAINER="ldev-minio-extract-$$"
-podman pull "quay.io/minio/minio:${MINIO_PINNED_RELEASE}"
-podman create --name "$MINIO_EXTRACT_CONTAINER" "quay.io/minio/minio:${MINIO_PINNED_RELEASE}" >/dev/null
-podman cp "${MINIO_EXTRACT_CONTAINER}:/usr/bin/minio" /usr/local/bin/minio.new
-podman rm "$MINIO_EXTRACT_CONTAINER" >/dev/null
-podman rmi "quay.io/minio/minio:${MINIO_PINNED_RELEASE}" >/dev/null 2>&1 || true
-mv /usr/local/bin/minio.new /usr/local/bin/minio
+RUSTFS_PINNED_VERSION="1.0.0"
+if ! /usr/local/bin/rustfs --version 2>/dev/null | head -1 | grep -qxF "rustfs ${RUSTFS_PINNED_VERSION}"; then
+    RUSTFS_TMP="$(mktemp -d)"
+    curl -fSL --retry 3 --retry-delay 2 -o "$RUSTFS_TMP/rustfs.zip" "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_PINNED_VERSION}/rustfs-linux-x86_64-musl-v${RUSTFS_PINNED_VERSION}.zip"
+    unzip -o -q "$RUSTFS_TMP/rustfs.zip" rustfs -d "$RUSTFS_TMP"
+    install -m 0755 "$RUSTFS_TMP/rustfs" /usr/local/bin/rustfs.new
+    mv /usr/local/bin/rustfs.new /usr/local/bin/rustfs
+    rm -rf "$RUSTFS_TMP"
+fi
 
-MC_PINNED_RELEASE="RELEASE.2025-08-13T08-35-41Z"
-curl -fSL --retry 3 --retry-delay 2 "https://github.com/minio/mc/releases/download/${MC_PINNED_RELEASE}/mc.linux-amd64.${MC_PINNED_RELEASE}" -o /usr/local/bin/mc.new
-mv /usr/local/bin/mc.new /usr/local/bin/mc
-chmod +x /usr/local/bin/minio /usr/local/bin/mc
 
 sudo -u "$SUDO_USER" composer global require laravel/installer
 if ! grep -qxF 'export PATH="$PATH:$HOME/.config/composer/vendor/bin"' "/home/$SUDO_USER/.bashrc"; then
@@ -106,7 +106,8 @@ fi
 dnf config-manager addrepo --overwrite --from-repofile=https://pkg.cloudflare.com/cloudflared.repo
 dnf install -y cloudflared
 
-mkdir -p "/home/$SUDO_USER/.ldev/storage/minio-data"
+mkdir -p "/home/$SUDO_USER/.ldev/storage/s3-data"
+mkdir -p "/home/$SUDO_USER/.ldev/storage/meilisearch"
 mkdir -p "/home/$SUDO_USER/Sites"
 mkdir -p "/home/$SUDO_USER/.config/ldev/"{nginx,php,certs,logs,supervisor,tunnels,mailpit}
 chown -R "$SUDO_USER:$SUDO_USER" "/home/$SUDO_USER/.ldev" "/home/$SUDO_USER/Sites" "/home/$SUDO_USER/.config/ldev"
@@ -310,26 +311,45 @@ variables_order = "EGPCS"
 EOF
 done
 
-MINIO_ENV_FILE="/home/$SUDO_USER/.config/ldev/minio.env"
-if [[ -f "$MINIO_ENV_FILE" ]]; then
-    MINIO_SECRET="$(grep '^MINIO_ROOT_PASSWORD=' "$MINIO_ENV_FILE" | cut -d= -f2-)"
-else
-    MINIO_SECRET="$(openssl rand -hex 20)"
-    cat > "$MINIO_ENV_FILE" <<EOF
-MINIO_ROOT_USER=ldevlocal
-MINIO_ROOT_PASSWORD=$MINIO_SECRET
-EOF
-    chown "$SUDO_USER:$SUDO_USER" "$MINIO_ENV_FILE"
-    chmod 600 "$MINIO_ENV_FILE"
+S3_ENV_FILE="/home/$SUDO_USER/.config/ldev/s3.env"
+OLD_MINIO_ENV_FILE="/home/$SUDO_USER/.config/ldev/minio.env"
+S3_ACCESS=""
+S3_SECRET=""
+if [[ -f "$S3_ENV_FILE" ]]; then
+    S3_ACCESS="$(grep '^RUSTFS_ACCESS_KEY=' "$S3_ENV_FILE" | cut -d= -f2-)"
+    S3_SECRET="$(grep '^RUSTFS_SECRET_KEY=' "$S3_ENV_FILE" | cut -d= -f2-)"
+elif [[ -f "$OLD_MINIO_ENV_FILE" ]]; then
+    S3_ACCESS="$(grep '^MINIO_ROOT_USER=' "$OLD_MINIO_ENV_FILE" | cut -d= -f2-)"
+    S3_SECRET="$(grep '^MINIO_ROOT_PASSWORD=' "$OLD_MINIO_ENV_FILE" | cut -d= -f2-)"
 fi
+S3_ACCESS="${S3_ACCESS:-ldevlocal}"
+S3_SECRET="${S3_SECRET:-$(openssl rand -hex 20)}"
+cat > "$S3_ENV_FILE" <<EOF
+RUSTFS_ACCESS_KEY=$S3_ACCESS
+RUSTFS_SECRET_KEY=$S3_SECRET
+EOF
+chown "$SUDO_USER:$SUDO_USER" "$S3_ENV_FILE"
+chmod 600 "$S3_ENV_FILE"
 
-cat > /etc/systemd/user/ldev-minio.service <<EOF
+cat > /etc/systemd/user/ldev-rustfs.service <<EOF
 [Unit]
-Description=Linux Dev MinIO
+Description=Linux Dev S3 storage (RustFS)
 
 [Service]
-EnvironmentFile=/home/$SUDO_USER/.config/ldev/minio.env
-ExecStart=/usr/local/bin/minio server /home/$SUDO_USER/.ldev/storage/minio-data --address 127.0.0.1:9000 --console-address 127.0.0.1:9001
+EnvironmentFile=/home/$SUDO_USER/.config/ldev/s3.env
+ExecStart=/usr/local/bin/rustfs server --address 127.0.0.1:9000 --console-enable --console-address 127.0.0.1:9001 /home/$SUDO_USER/.ldev/storage/s3-data
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
+cat > /etc/systemd/user/ldev-meilisearch.service <<EOF
+[Unit]
+Description=Linux Dev Meilisearch
+
+[Service]
+ExecStart=/usr/local/bin/meilisearch --db-path /home/$SUDO_USER/.ldev/storage/meilisearch/data.ms --dump-dir /home/$SUDO_USER/.ldev/storage/meilisearch/dumps --snapshot-dir /home/$SUDO_USER/.ldev/storage/meilisearch/snapshots --http-addr 127.0.0.1:7700 --env development --no-analytics
 Restart=always
 
 [Install]
@@ -389,13 +409,87 @@ systemctl restart supervisord
 loginctl enable-linger "$SUDO_USER"
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user enable ldev-mailpit.service
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user restart ldev-mailpit.service
-sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user enable ldev-minio.service
-sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user restart ldev-minio.service
+if [[ -f /etc/systemd/user/ldev-minio.service ]]; then
+    sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user disable --now ldev-minio.service 2>/dev/null || true
+    rm -f /etc/systemd/user/ldev-minio.service
+    sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user daemon-reload
+fi
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user enable ldev-rustfs.service
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user restart ldev-rustfs.service
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user enable ldev-meilisearch.service
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user restart ldev-meilisearch.service
 
-for i in $(seq 1 10); do
-    sudo -u "$SUDO_USER" mc alias set ldevlocal http://127.0.0.1:9000 ldevlocal "$MINIO_SECRET" >/dev/null 2>&1 && break
+S3_READY=no
+for i in $(seq 1 20); do
+    if curl -fs http://127.0.0.1:9000/health >/dev/null 2>&1; then
+        S3_READY=yes
+        break
+    fi
     sleep 1
 done
+if [[ $S3_READY != yes ]]; then
+    echo "⚠️  The local S3 storage (ldev-rustfs) did not start — check: systemctl --user status ldev-rustfs" >&2
+fi
+
+OLD_MINIO_DATA="/home/$SUDO_USER/.ldev/storage/minio-data"
+OLD_COPY_MARKER="/home/$SUDO_USER/.ldev/storage/s3-data/.copied-from-minio"
+if [[ -e "$OLD_COPY_MARKER" ]]; then
+    rm -rf "$OLD_MINIO_DATA" "$OLD_COPY_MARKER"
+fi
+if [[ -x /usr/local/bin/minio && -d "$OLD_MINIO_DATA" && -n "$(ls -A "$OLD_MINIO_DATA" 2>/dev/null)" && $S3_READY == yes ]]; then
+    echo "Moving your buckets from MinIO into RustFS (one time only)..."
+    MC_TMP="$(mktemp -d)"
+    chown "$SUDO_USER:$SUDO_USER" "$MC_TMP"
+    MC_RELEASE="RELEASE.2025-08-13T08-35-41Z"
+    curl -fSL --retry 3 --retry-delay 2 -o "$MC_TMP/mc" "https://github.com/minio/mc/releases/download/${MC_RELEASE}/mc.linux-amd64.${MC_RELEASE}"
+    chmod 0755 "$MC_TMP/mc"
+    MC=(sudo -u "$SUDO_USER" "$MC_TMP/mc" --config-dir "$MC_TMP/config")
+    sudo -u "$SUDO_USER" env MINIO_ROOT_USER="$S3_ACCESS" MINIO_ROOT_PASSWORD="$S3_SECRET" \
+        /usr/local/bin/minio server "$OLD_MINIO_DATA" --address 127.0.0.1:9010 --console-address 127.0.0.1:9011 >/dev/null 2>&1 &
+    OLD_MINIO_PID=$!
+    COPY_RESULT=failed
+    for i in $(seq 1 20); do
+        if "${MC[@]}" alias set old http://127.0.0.1:9010 "$S3_ACCESS" "$S3_SECRET" >/dev/null 2>&1; then
+            COPY_RESULT=ok
+            break
+        fi
+        sleep 1
+    done
+    if [[ $COPY_RESULT == ok ]] && "${MC[@]}" alias set new http://127.0.0.1:9000 "$S3_ACCESS" "$S3_SECRET" >/dev/null 2>&1; then
+        while read -r bucket; do
+            [[ -z "$bucket" ]] && continue
+            if ! "${MC[@]}" mb --ignore-existing "new/$bucket" >/dev/null \
+                || ! "${MC[@]}" mirror --overwrite --quiet "old/$bucket" "new/$bucket" >/dev/null \
+                || [[ -n "$("${MC[@]}" diff "old/$bucket" "new/$bucket" 2>&1)" ]]; then
+                COPY_RESULT=failed
+            fi
+        done < <("${MC[@]}" ls old | awk '{print $NF}' | sed 's#/$##')
+    else
+        COPY_RESULT=failed
+    fi
+    kill "$OLD_MINIO_PID" 2>/dev/null || true
+    wait "$OLD_MINIO_PID" 2>/dev/null || true
+    rm -rf "$MC_TMP"
+    if [[ $COPY_RESULT == ok ]]; then
+        rm -rf "$OLD_MINIO_DATA"
+        echo "Buckets moved into RustFS and checked; MinIO has been removed."
+    else
+        echo "⚠️  Some MinIO buckets could not be copied into RustFS. The old data is untouched in $OLD_MINIO_DATA; re-run this script to try again." >&2
+    fi
+fi
+if [[ ! -d "$OLD_MINIO_DATA" ]]; then
+    rm -f /usr/local/bin/minio "$OLD_MINIO_ENV_FILE"
+fi
+
+if [[ -x /usr/local/bin/mc ]]; then
+    sudo -u "$SUDO_USER" /usr/local/bin/mc alias remove ldevlocal >/dev/null 2>&1 || true
+    sudo -u "$SUDO_USER" /usr/local/bin/mc alias remove fldevlocal >/dev/null 2>&1 || true
+    rm -f /usr/local/bin/mc
+fi
+MC_CONFIG="/home/$SUDO_USER/.mc/config.json"
+if [[ -f "$MC_CONFIG" ]] && python3 -c "import json,sys; sys.exit(0 if set(json.load(open(sys.argv[1]))['aliases']) <= {'gcs','local','play','s3'} else 1)" "$MC_CONFIG" 2>/dev/null; then
+    rm -rf "/home/$SUDO_USER/.mc"
+fi
 
 cat > /etc/nginx/conf.d/ldev.conf <<EOF
 include /home/$SUDO_USER/.config/ldev/nginx/*.conf;
@@ -406,5 +500,5 @@ systemctl reload nginx
 
 echo "✅ Linux Dev environment setup complete!"
 echo "Mailpit UI running at http://127.0.0.1:8025"
-echo "MinIO console running at http://127.0.0.1:9001 (user: ldevlocal, password in ~/.config/ldev/minio.env)"
+echo "S3 storage (RustFS) console running at http://127.0.0.1:9001/rustfs/console/ (username and password in ~/.config/ldev/s3.env)"
 echo "Run deploy-app.sh next to build and start the Linux Dev control app."

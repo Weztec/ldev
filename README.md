@@ -3,7 +3,7 @@
 A Laravel Valet/Herd-style local development environment for **Fedora 44 KDE Plasma**.
 
 Linux Dev provisions a full local dev stack (nginx, PHP-FPM across multiple PHP versions, MariaDB,
-PostgreSQL, Valkey, Memcached, Mailpit, MinIO, Supervisor, mkcert, dnsmasq, cloudflared) and layers a dashboard
+PostgreSQL, Valkey, Memcached, Mailpit, RustFS (S3 storage), Meilisearch, Supervisor, mkcert, dnsmasq, cloudflared) and layers a dashboard
 on top for managing sites, services, and per-project settings from a browser — no terminal needed
 for day-to-day work, once it's installed.
 
@@ -23,18 +23,24 @@ Ubuntu. Inside this project the distro-neutral name `ldev` is used for paths, se
 - Multiple Node.js versions (via nvm) selectable per site
 - MariaDB, PostgreSQL, and SQLite — pick a driver per project, and either create a new database or
   point at one that already exists
-- Mailpit for catching every project's outbound mail, MinIO for local S3-compatible storage
+- Mailpit for catching every project's outbound mail, RustFS for local S3-compatible storage,
+  Meilisearch for fast, typo-tolerant search (one switch connects a project, including Laravel Scout)
+- A per-project `dump()`/`dd()` viewer: send a project's dumps to its dashboard page instead of the
+  browser, including from JSON, Livewire, queued jobs and artisan commands
 - Supervisor-managed background processes per project: queue workers, Laravel Reverb (WebSockets),
   the Laravel scheduler, plus your own custom jobs (one-off commands or cron-scheduled tasks,
   saveable as reusable templates)
 - A dashboard for creating new projects (fresh Laravel scaffold, or cloned from an existing
   GitHub/Bitbucket repository or a plain static/WordPress project), managing services, browsing
   databases (via Adminer), reading logs, and backing up and restoring both project and dashboard data
+- A committed `ldev.json` per project, so everyone who clones it gets the same PHP/Node versions,
+  database, workers and jobs, with checks that the installed services meet the project's requirements
 - A temporary public demo link per project through a free Cloudflare quick tunnel (no signup)
 - Background housekeeping timers: every 5 minutes it looks for new projects in `~/Sites` and checks
   health (failed services, expiring certificates, low disk space), and once a day it renews
   certificates, backs up databases, and checks for newer versions
-- Update awareness: new Linux Dev releases, newer PHP/Node/framework releases and pending Fedora
+- Update awareness: new Linux Dev releases, newer PHP/Node/framework releases, newer npm for each
+  installed Node version (with a one-click upgrade), and pending Fedora
   updates for the stack's own packages show as a dashboard banner, with a copyable
   `sudo dnf upgrade` command
 - Per-project dependency health: Composer and npm security advisories (`composer audit`,
@@ -90,21 +96,22 @@ commands, which work without dashboard access.
 |---|---|
 | `sudo ./deploy-app.sh` | You've changed `control-app/` (the dashboard's own code) and want to redeploy it. Safe to re-run any time — it doesn't touch your projects. |
 | `sudo ./setup-environment.sh` | You want to pick up newer versions of the underlying OS packages, or re-apply configuration after something changed. Idempotent — safe to run again. |
-| `sudo ./uninstall.sh` | Removes everything Linux Dev installed. Leaves `~/Sites` (your actual projects) and MinIO's real bucket data alone — see [Layout](#layout) below for exactly what's kept and what isn't. |
+| `sudo ./uninstall.sh` | Removes everything Linux Dev installed. Leaves `~/Sites` (your actual projects) and your S3 bucket data alone — see [Layout](#layout) below for exactly what's kept and what isn't. |
 
 ### Updating Linux Dev
 
-The dashboard checks GitHub once a day for a newer Linux Dev release and shows it in the banner
-and under **Settings → Updates**. To update, from your checkout:
+The installed version is shown at the bottom of the dashboard's sidebar. Once a day it checks
+GitHub for a newer release; when there is one, the sidebar says *Update available*, and
+**Settings → Updates → Update** shows the exact command for your checkout with a **Copy** button.
+To update, from your checkout:
 
 ```
 git pull
-sudo ./deploy-app.sh
+sudo ./install.sh
 ```
 
-Your sites, settings and tokens are kept; `deploy-app.sh` backs up the dashboard's database
-before it touches anything. If a release's notes mention OS-level changes, run
-`sudo ./setup-environment.sh` as well.
+`install.sh` re-runs both setup scripts, which are safe to run again. Your sites, settings and
+tokens are kept, and `deploy-app.sh` backs up the dashboard's database before it touches anything.
 
 ## First steps
 
@@ -128,7 +135,7 @@ install.sh            → runs setup-environment.sh then deploy-app.sh (first-ti
 setup-environment.sh  → OS packages/services/DNS/TLS/DB-auth. Idempotent. Run once per machine.
 deploy-app.sh          → scaffolds the dashboard app and (re)deploys it. Re-run whenever
                          control-app/ changes.
-uninstall.sh           → reverses both. Leaves ~/Sites and MinIO bucket data alone.
+uninstall.sh           → reverses both. Leaves ~/Sites and S3 bucket data alone.
 control-app/           → the dashboard's source (overlaid onto a Laravel skeleton at deploy time)
 ```
 
@@ -138,9 +145,38 @@ On a running machine, Linux Dev also uses:
 |---|---|---|
 | `~/Sites` | Every project you create or link — one directory per project. | Yes |
 | `~/.ldev/app` | The deployed dashboard itself. Fully rebuilt by `deploy-app.sh`. | No (regenerable) |
-| `~/.ldev/storage` | MinIO's real bucket data. | Yes |
-| `~/.ldev/storage/dependency-sandbox`, `~/.ldev/storage/test-runs` | Throwaway project copies for testing dependency updates, and test-run logs. Safe to delete. | No |
+| `~/.ldev/storage` | S3 bucket data (RustFS) and Meilisearch's indexes. | Yes |
+| `~/.ldev/storage/dependency-sandbox`, `~/.ldev/storage/test-runs`, `~/.ldev/storage/dumps` | Throwaway project copies for testing dependency updates, test-run logs, and collected `dump()` output. Safe to delete. | No |
 | `~/.config/ldev` | nginx vhosts, TLS certs, per-project logs, Supervisor job configs, the dashboard's access token, project and dashboard backups. | No (regenerable config; **back up `~/.config/ldev/backups` yourself if it matters** — see the Help section's "Backups & recovery" page) |
+
+## Sharing a project's setup (ldev.json)
+
+On a project's **Project settings** page, **Save current settings to ldev.json** writes a file to
+the project root with its PHP and Node versions, database driver and name, flags (Xdebug, queue
+worker, Reverb, scheduler, Meilisearch, daily backups), queue settings and custom background jobs. Commit it and
+anyone who adds or clones the project gets the same setup automatically. It never contains
+passwords or `.env` values. New projects created from a starter kit get one automatically, in their
+first commit. Any other project without one shows a **Create ldev.json** notice on its Overview
+page, and the file can be viewed and edited under **Project settings → Environment / project files**.
+Changing a project's PHP or Node version doesn't touch the file, so you can try a version first: a
+note offers **Keep … for everyone** (updates `ldev.json`) or **Switch back**.
+
+```json
+{
+  "php": "8.4",
+  "node": "24",
+  "database": { "driver": "mysql", "name": "acme_shop" },
+  "queue": { "enabled": true, "queues": "default,emails", "workers": 2 },
+  "scheduler": true,
+  "requires": { "mariadb": ">=11.4", "postgresql": "^17 || ^18" }
+}
+```
+
+Every key is optional. `requires` states the service versions a project needs (`mariadb`,
+`postgresql`, `valkey`, `memcached`, `nginx`, using Composer-style constraints). Services are
+installed once and shared by every project, so Linux Dev checks these and shows a *requirements not
+met* badge rather than running a different version per project. PHP and Node versions are
+per project.
 
 ## Connecting GitHub/Bitbucket repositories (dashboard's Repositories page)
 

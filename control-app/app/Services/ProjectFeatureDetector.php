@@ -27,6 +27,11 @@ class ProjectFeatureDetector
             $applied[] = 'queue';
         }
 
+        if (isset($requires['meilisearch/meilisearch-php']) && $this->envValue($projectPath, 'SCOUT_DRIVER') !== 'meilisearch') {
+            (new MeilisearchProvisioner)->enable($projectPath);
+            $applied[] = 'meilisearch';
+        }
+
         if (isset($requires['league/flysystem-aws-s3-v3']) && $this->envValue($projectPath, 'FILESYSTEM_DISK') !== 's3') {
             (new S3Provisioner)->provision($projectPath, $site->name);
             $applied[] = 's3';

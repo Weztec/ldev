@@ -24,6 +24,20 @@ class EnvFileWriter
         File::put($envPath, $env);
     }
 
+    public function remove(string $projectPath, array $keys): void
+    {
+        $envPath = $projectPath . '/.env';
+        if (!File::exists($envPath)) {
+            return;
+        }
+
+        $env = File::get($envPath);
+        foreach ($keys as $key) {
+            $env = preg_replace('/^' . preg_quote($key, '/') . '=.*(\R|$)/m', '', $env);
+        }
+        File::put($envPath, $env);
+    }
+
     public function ensureExists(string $projectPath): void
     {
         $envPath = $projectPath . '/.env';

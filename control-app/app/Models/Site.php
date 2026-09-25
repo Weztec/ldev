@@ -36,6 +36,7 @@ class Site extends Model
             File::delete([
                 config('ldev.dependency_sandbox_dir') . '/' . $site->name . '.log',
                 config('ldev.test_runs_dir') . '/' . $site->name . '.log',
+                config('ldev.dumps_dir') . '/' . $site->name . '.jsonl',
             ]);
         });
     }
@@ -130,6 +131,13 @@ class Site extends Model
         }
 
         return (bool) preg_match('/^FILESYSTEM_DISK=s3\s*$/m', File::get($envPath));
+    }
+
+    public function usesMeilisearch(): bool
+    {
+        $envPath = $this->projectRoot() . '/.env';
+
+        return File::exists($envPath) && (bool) preg_match('/^SCOUT_DRIVER=meilisearch\s*$/m', File::get($envPath));
     }
 
     public function subdomainWildcardName(): ?string

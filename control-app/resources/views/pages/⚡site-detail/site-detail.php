@@ -12,6 +12,8 @@ use App\Services\DependencyHealthChecker;
 use App\Services\DependencySandbox;
 use App\Services\TestRunner;
 use App\Services\TestEnvironment;
+use App\Services\ProjectManifest;
+use App\Services\DumpStore;
 use App\Models\Setting;
 use App\Models\RepositoryToken;
 use Illuminate\Support\Facades\File;
@@ -98,8 +100,17 @@ new class extends Component {
 
     protected array $knownPollIntervals = [5, 10, 15, 30, 60];
 
+    public $hasManifest = true;
+    public $dumpsEnabled = false;
+    public $dumps = [];
+    public $dumpServerRunning = false;
+    public $manifestCreated = false;
+    public $manifestError = null;
+
     public function mount(Site $site)
     {
+        $this->hasManifest = (new ProjectManifest)->exists($site->projectRoot());
+        $this->refreshDumps();
         $this->site = $site;
         $this->refreshGitStatus();
         $this->tunnelUrl = (new CloudflareTunnelManager)->publicUrl($this->site);
@@ -125,6 +136,21 @@ new class extends Component {
         Setting::set('site_detail_poll_seconds', (string) $this->pollIntervalSeconds);
     }
 
+    public function createManifest()
+    {
+        $this->manifestError = null;
+
+        try {
+            (new ProjectManifest)->write($this->site);
+        } catch (\Throwable $e) {
+            $this->manifestError = 'Could not write ' . ProjectManifest::FILENAME . ': ' . $e->getMessage();
+            return;
+        }
+
+        $this->hasManifest = true;
+        $this->manifestCreated = true;
+    }
+
     public function livePoll()
     {
         if ($this->isPaused) {
@@ -135,11 +161,33 @@ new class extends Component {
         $this->refreshResourceUsage();
         $this->refreshBackgroundProcesses();
         $this->refreshProjectLog();
+        $this->refreshDumps();
         $this->sandbox = DependencySandbox::status($this->site);
         $this->testRun = TestRunner::status($this->site);
         if (($this->testRun['finishedAt'] ?? null) !== (end($this->testHistory)['finishedAt'] ?? null)) {
             $this->testHistory = TestRunner::history($this->site);
         }
+    }
+
+    public function refreshDumps()
+    {
+        $store = new DumpStore;
+        $this->dumpsEnabled = $store->enabled($this->site);
+        $this->dumpServerRunning = $store->serverRunning();
+        $this->dumps = $store->latest($this->site->name, 30);
+    }
+
+    public function toggleDumps()
+    {
+        $store = new DumpStore;
+        $store->enabled($this->site) ? $store->disable($this->site) : $store->enable($this->site);
+        $this->refreshDumps();
+    }
+
+    public function clearDumps()
+    {
+        (new DumpStore)->clear($this->site->name);
+        $this->refreshDumps();
     }
 
     public function toggleSection(string $section)

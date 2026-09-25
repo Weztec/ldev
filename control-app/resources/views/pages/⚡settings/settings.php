@@ -16,9 +16,9 @@ new class extends Component {
     public $defaultNodeVersion;
     public $activeDefaultNodeVersion;
     public $justRegenerated = false;
-    public $minioAccessKey;
-    public $minioSecretKey;
-    public $minioDataDir;
+    public $s3AccessKey;
+    public $s3SecretKey;
+    public $s3DataDir;
 
     public $composerCredentials;
     public $composerHost = '';
@@ -59,6 +59,7 @@ new class extends Component {
 
     public function mount()
     {
+        $this->npmUpgradeNote = session('npmUpgradeNote');
         $this->maskedToken = $this->maskToken($this->currentToken());
 
         $this->defaultPhpVersion = Setting::get('default_php_version', end($this->knownVersions));
@@ -67,9 +68,9 @@ new class extends Component {
         $this->refreshActiveDefaultNodeVersion();
         $this->availableNodeVersions = (new NodeVersionManager)->availableVersions();
 
-        $this->minioAccessKey = config('ldev.minio.access_key');
-        $this->minioSecretKey = config('ldev.minio.secret_key');
-        $this->minioDataDir = config('ldev.minio_data_dir');
+        $this->s3AccessKey = config('ldev.s3.access_key');
+        $this->s3SecretKey = config('ldev.s3.secret_key');
+        $this->s3DataDir = config('ldev.s3_data_dir');
 
         $this->loadComposerCredentials(true);
 
@@ -146,7 +147,7 @@ new class extends Component {
 
     public function loadVersionChecks()
     {
-        foreach (['ldev', 'php', 'node', 'laravel', 'livewire', 'flux', 'dnf'] as $key) {
+        foreach (['ldev', 'php', 'node', 'npm', 'laravel', 'livewire', 'flux', 'dnf'] as $key) {
             $raw = Setting::get("version_check_{$key}");
             $this->versionChecks[$key] = $raw ? json_decode($raw, true) : null;
         }
@@ -154,12 +155,44 @@ new class extends Component {
         $this->versionCheckLastRun = Setting::get('version_check_last_run');
     }
 
+    public $npmUpgradeNote = null;
+    public $npmUpgradeError = null;
+
+    public function upgradeNpm(string $node)
+    {
+        $this->npmUpgradeNote = null;
+        $this->npmUpgradeError = null;
+
+        $check = $this->versionChecks['npm'] ?? null;
+        $target = collect(\App\Services\VersionChecker::npmUpgradable($check))->firstWhere('node', $node);
+        if (!$target) {
+            return;
+        }
+
+        try {
+            (new \App\Services\NodeVersionManager)->upgradeNpm($node, $check['latest']);
+        } catch (\Throwable $e) {
+            $this->npmUpgradeError = "npm upgrade for Node {$node} failed: " . trim($e->getMessage());
+            return;
+        }
+
+        $fresh = (new \App\Services\VersionChecker)->checkNpm();
+        if ($fresh) {
+            Setting::set('version_check_npm', json_encode($fresh));
+        }
+        $this->loadVersionChecks();
+        $installed = collect($fresh['nodes'] ?? [])->firstWhere('node', $node)['npm'] ?? null;
+        session()->flash('npmUpgradeNote', "Node {$node} now has npm {$installed}.");
+
+        return $this->redirect(route('settings', absolute: false), navigate: true);
+    }
+
     public function checkVersionsNow()
     {
         $this->checkingVersionsNow = true;
         \Illuminate\Support\Facades\Artisan::call('ldev:check-versions', ['--skip-sites' => true]);
-        $this->loadVersionChecks();
-        $this->checkingVersionsNow = false;
+
+        return $this->redirect(route('settings', absolute: false), navigate: true);
     }
 
     public function startAddingComposerCredential()

@@ -52,6 +52,9 @@ class NewProjectDetector
             'queue_tries' => $backup['queue_tries'] ?? 3,
             'queue_max_time' => $backup['queue_max_time'] ?? 3600,
             'reverb_enabled' => $backup['reverb_enabled'] ?? false,
+            'queue_names' => $backup['queue_names'] ?? null,
+            'scheduler_enabled' => $backup['scheduler_enabled'] ?? false,
+            'db_auto_backup_enabled' => $backup['db_auto_backup_enabled'] ?? false,
             'supervisor_extra' => $backup['supervisor_extra'] ?? null,
             'processes' => $backup['processes'] ?? [],
             'from_backup' => $backup !== null,
@@ -88,6 +91,9 @@ class NewProjectDetector
             'queue_sleep' => max(0, min(60, (int) $resolved['queue_sleep'])),
             'queue_tries' => max(1, min(20, (int) $resolved['queue_tries'])),
             'queue_max_time' => max(60, min(86400, (int) $resolved['queue_max_time'])),
+            'queue_names' => is_string($resolved['queue_names']) && preg_match('/^[a-zA-Z0-9_,-]+$/', $resolved['queue_names']) ? $resolved['queue_names'] : 'default',
+            'scheduler_enabled' => (bool) $resolved['scheduler_enabled'],
+            'db_auto_backup_enabled' => (bool) $resolved['db_auto_backup_enabled'],
 
             'is_linked' => true,
         ]);
@@ -95,6 +101,14 @@ class NewProjectDetector
         (new GitInitializer)->initIfNeeded($projectPath);
 
         $setupWarning = $this->restoreCustomJobs($site, $resolved);
+
+        $manifestService = new ProjectManifest;
+        $manifest = $manifestService->read($projectPath);
+        $manifestWarnings = $manifestService->warnings;
+        if (isset($manifest['database'])) {
+            [, $dbWarnings] = $manifestService->apply($site, ['database' => $manifest['database']], includeDatabase: true);
+            $manifestWarnings = array_merge($manifestWarnings, $dbWarnings);
+        }
 
         try {
             (new ProjectSetupPipeline)->run($projectPath);
@@ -112,6 +126,19 @@ class NewProjectDetector
             $site->update(['reverb_enabled' => true]);
             (new ReverbProvisioner)->provision($projectPath, $site);
             $applied[] = 'reverb';
+        }
+
+        if ($manifest) {
+            [$fromManifest, $applyWarnings] = $manifestService->apply($site->fresh(), array_diff_key($manifest, ['database' => true]));
+            $site->refresh();
+            if ($fromManifest) {
+                $applied[] = ProjectManifest::FILENAME;
+            }
+            $manifestWarnings = array_merge($manifestWarnings, $applyWarnings);
+        }
+
+        if ($manifestWarnings) {
+            $setupWarning = trim(($setupWarning ? $setupWarning . ' ' : '') . ProjectManifest::FILENAME . ': ' . implode(' ', $manifestWarnings));
         }
 
         if ($hadBackup) {

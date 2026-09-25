@@ -25,6 +25,12 @@ class UpdateSummary
             $notices[] = ['key' => 'node', 'label' => 'Node.js', 'detail' => 'LTS ' . $node['latestLtsVersion'] . ' released'];
         }
 
+        $npmUpgradable = VersionChecker::npmUpgradable($this->read('npm'));
+        if ($npmUpgradable) {
+            $npm = $this->read('npm');
+            $notices[] = ['key' => 'npm', 'label' => 'npm', 'detail' => $npm['latest'] . ' available for Node ' . collect($npmUpgradable)->map(fn ($n) => explode('.', $n['node'])[0])->unique()->implode(', ')];
+        }
+
         foreach (['laravel' => 'Laravel', 'livewire' => 'Livewire', 'flux' => 'Flux'] as $key => $label) {
             $check = $this->read($key);
             if ($check && !($check['satisfiesCurrent'] ?? true)) {

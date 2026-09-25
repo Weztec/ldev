@@ -21,6 +21,7 @@ use App\Services\ProjectFeatureDetector;
 use App\Services\ComposerAuthWriter;
 use App\Services\NodeVersionManager;
 use App\Services\EnvFileWriter;
+use App\Services\ProjectManifest;
 
 class LdevNew extends Command
 {
@@ -44,7 +45,7 @@ class LdevNew extends Command
         {--create-repo : Create a brand-new repository on the chosen provider and push the initial scaffold to it (scaffold path only, ignored with --repo)}
         {--repo-token-id= : RepositoryToken id to create the --create-repo repository with}
         {--repo-visibility=private : Visibility for the --create-repo repository (private|public)}
-        {--s3 : Provision a local MinIO bucket for file/image storage}
+        {--s3 : Provision a local S3 (RustFS) bucket for file/image storage}
         {--reverb : Install Laravel Reverb (WebSocket broadcasting) and supervise it}';
     protected $description = 'Scaffold a new Laravel project (or clone a repository) and link it to a *.test domain';
 
@@ -65,6 +66,8 @@ class LdevNew extends Command
         }
 
         $repoUrl = $this->option('repo');
+        $manifest = null;
+        $manifestService = new ProjectManifest;
 
         if ($repoUrl) {
             $this->info("Cloning $repoUrl to $path");
@@ -77,6 +80,14 @@ class LdevNew extends Command
             (new RepositoryCloneProvisioner)->clone($repoUrl, $path, $token);
 
             (new EnvFileWriter)->ensureExists($path);
+
+            $manifest = $manifestService->read($path);
+            foreach ($manifestService->warnings as $warning) {
+                $this->warn(ProjectManifest::FILENAME . ": {$warning}");
+            }
+            if ($manifest) {
+                $this->info('Using the settings in ' . ProjectManifest::FILENAME . ' from the repository.');
+            }
 
         } else {
             $this->info("Creating Laravel project at $path");
@@ -136,6 +147,16 @@ class LdevNew extends Command
                 }
             }
 
+            if (File::exists($path . '/package.json') && !File::exists($path . '/package-lock.json')) {
+                try {
+                    (new NodeVersionManager)->writeLockfile($path, $this->resolveNodeVersion());
+                } catch (\Throwable $e) {
+                    $this->warn('Could not create package-lock.json before the first commit: ' . trim($e->getMessage()));
+                }
+            }
+
+            $this->writeInitialManifest($path, $name);
+
             (new GitInitializer)->initIfNeeded($path);
 
             if ($this->option('create-repo')) {
@@ -159,6 +180,10 @@ class LdevNew extends Command
         $dbType = $this->option('db') ?? 'sqlite';
         $dbExisting = $this->option('db-existing') ?: null;
         $dbName = $this->option('db-name') ?: $name;
+        if (isset($manifest['database']) && $dbExisting === null) {
+            $dbType = $manifest['database']['driver'];
+            $dbName = $manifest['database']['name'] ?? $name;
+        }
         if (($dbExisting || $this->option('db-name')) && !in_array($dbType, ['mysql', 'pgsql'], true)) {
             $this->error('--db-name/--db-existing only apply with --db=mysql or --db=pgsql.');
             return 1;
@@ -167,7 +192,7 @@ class LdevNew extends Command
             $this->configureDatabase($path, $dbType, $dbName, $dbExisting);
         }
 
-        if ($this->option('s3')) {
+        if ($this->option('s3') || ($manifest['s3'] ?? false)) {
             (new S3Provisioner)->provision($path, $name);
         }
 
@@ -180,12 +205,7 @@ class LdevNew extends Command
 
         $this->call('ldev:link', ['name' => $name, 'path' => $path]);
 
-        $knownVersions = self::KNOWN_PHP_VERSIONS;
-        $latestVersion = end($knownVersions);
-        $phpVersion = $this->option('php') ?: Setting::get('default_php_version', $latestVersion);
-        if (!in_array($phpVersion, self::KNOWN_PHP_VERSIONS, true)) {
-            $phpVersion = $latestVersion;
-        }
+        $phpVersion = $manifest['php'] ?? $this->resolvePhpVersion();
         $site = Site::where('name', $name)->firstOrFail();
         if ($site->php_version !== $phpVersion) {
             $site->update(['php_version' => $phpVersion]);
@@ -193,18 +213,13 @@ class LdevNew extends Command
         }
 
         if (File::exists($path . '/package.json')) {
-            $knownNodeVersions = NodeVersionManager::KNOWN_VERSIONS;
-            $latestNodeVersion = end($knownNodeVersions);
-            $nodeVersion = $this->option('node') ?: Setting::get('default_node_version', $latestNodeVersion);
-            if (!in_array($nodeVersion, NodeVersionManager::KNOWN_VERSIONS, true)) {
-                $nodeVersion = $latestNodeVersion;
-            }
+            $nodeVersion = $manifest['node'] ?? $this->resolveNodeVersion();
 
             (new NodeVersionManager)->npmInstallAndBuild($path, $nodeVersion);
             $site->update(['node_version' => $nodeVersion]);
         }
 
-        if ($this->option('reverb')) {
+        if ($this->option('reverb') || ($manifest['reverb'] ?? false)) {
             $site->update(['reverb_enabled' => true]);
             (new ReverbProvisioner)->provision($path, $site);
             (new NginxConfigGenerator)->generate($site);
@@ -220,8 +235,59 @@ class LdevNew extends Command
             }
         }
 
+        if ($manifest) {
+            [, $manifestWarnings] = $manifestService->apply($site->fresh(), array_diff_key($manifest, array_flip(['database', 'php', 'node', 's3', 'reverb'])));
+            foreach ($manifestWarnings as $warning) {
+                $this->warn($warning);
+            }
+        }
+
         $this->info("Project $name ready at https://$name.test");
         return 0;
+    }
+
+    protected function resolvePhpVersion(): string
+    {
+        $known = self::KNOWN_PHP_VERSIONS;
+        $latest = end($known);
+        $version = $this->option('php') ?: Setting::get('default_php_version', $latest);
+
+        return in_array($version, $known, true) ? $version : $latest;
+    }
+
+    protected function resolveNodeVersion(): string
+    {
+        $known = NodeVersionManager::KNOWN_VERSIONS;
+        $latest = end($known);
+        $version = $this->option('node') ?: Setting::get('default_node_version', $latest);
+
+        return in_array($version, $known, true) ? $version : $latest;
+    }
+
+    protected function writeInitialManifest(string $path, string $name): void
+    {
+        $service = new ProjectManifest;
+        if ($service->exists($path)) {
+            return;
+        }
+
+        $dbType = $this->option('db') ?? 'sqlite';
+        $database = ['driver' => $dbType];
+        if (in_array($dbType, ['mysql', 'pgsql'], true)) {
+            $database['name'] = $this->option('db-existing') ?: str_replace('-', '_', $this->option('db-name') ?: $name);
+        }
+
+        $manifest = array_filter([
+            'php' => $this->resolvePhpVersion(),
+            'node' => File::exists($path . '/package.json') ? $this->resolveNodeVersion() : null,
+            'database' => $database,
+            's3' => (bool) $this->option('s3'),
+            'reverb' => (bool) $this->option('reverb'),
+        ], fn ($value) => $value !== null);
+
+        $manifest = $service->normalise($manifest);
+        File::put($service->path($path), json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        $this->info('Wrote ' . ProjectManifest::FILENAME . ' with this project\'s settings.');
     }
 
     protected function configureDatabase(string $path, string $dbType, string $name, ?string $existing = null): void

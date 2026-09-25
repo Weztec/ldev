@@ -117,7 +117,22 @@
                         @foreach($entry['repos'] as $repo)
                             <tr>
                                 <td class="px-4 py-2 text-sm truncate">{{ $repo['name'] }}</td>
-                                <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 w-24">{{ $repo['private'] ? 'Private' : 'Public' }}</td>
+                                <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 w-56">
+                                    @if(!empty($repo['updated_at']))
+                                        @php $updated = \Illuminate\Support\Carbon::parse($repo['updated_at'])->setTimezone(config('ldev.timezone')); @endphp
+                                        <span title="{{ $updated->diffForHumans() }}">{{ $updated->format('j M Y, H:i') }}</span>
+                                        @if(!empty($repo['updated_by']))
+                                            <span class="block truncate">by {{ $repo['updated_by'] }}</span>
+                                        @endif
+                                    @endif
+                                </td>
+                                <td class="px-4 py-2 text-xs w-24">
+                                    @if($repo['private'])
+                                        <span class="rounded px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Private</span>
+                                    @else
+                                        <span class="rounded px-1.5 py-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">Public</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-2 text-right w-32">
 
                                     <a href="{{ route('new-project', ['clone_url' => $repo['clone_url_ssh'] ?? $repo['clone_url'], 'token_id' => $repoToken->id]) }}" wire:navigate>

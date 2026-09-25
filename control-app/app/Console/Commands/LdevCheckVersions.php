@@ -44,6 +44,14 @@ class LdevCheckVersions extends Command
             }
         }
 
+        $npm = $checker->checkNpm();
+        if ($npm) {
+            Setting::set('version_check_npm', json_encode($npm));
+            foreach (VersionChecker::npmUpgradable($npm) as $node) {
+                $this->info("npm {$npm['latest']} available for Node {$node['node']} (has {$node['npm']})");
+            }
+        }
+
         foreach ([
             'laravel' => ['laravel', 'framework', '^13.0'],
             'livewire' => ['livewire', 'livewire', '^4.0'],

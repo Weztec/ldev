@@ -22,6 +22,9 @@ class SiteConfigBackup
             'queue_tries' => $site->queue_tries,
             'queue_max_time' => $site->queue_max_time,
             'reverb_enabled' => $site->reverb_enabled,
+            'queue_names' => $site->queue_names,
+            'scheduler_enabled' => $site->scheduler_enabled,
+            'db_auto_backup_enabled' => $site->db_auto_backup_enabled,
             'supervisor_extra' => $site->supervisor_extra,
             'processes' => $site->processes()->get()
                 ->map(fn ($p) => $p->only(['name', 'command', 'schedule', 'numprocs', 'stopwaitsecs', 'autostart', 'autorestart', 'enabled']))

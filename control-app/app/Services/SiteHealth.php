@@ -17,6 +17,7 @@ class SiteHealth
         }
         $values = Setting::whereIn('key', $keys)->pluck('value', 'key');
 
+        $manifests = new ProjectManifest;
         $health = [];
         foreach ($sites as $site) {
             $deps = json_decode((string) $values->get(DependencyHealthChecker::settingKey($site)), true) ?: [];
@@ -30,6 +31,7 @@ class SiteHealth
                 'failing' => ($tests['state'] ?? null) === 'done' ? $results->whereIn('status', ['failed', 'error'])->count() : 0,
                 'testsPassed' => ($tests['state'] ?? null) === 'done' && $results->count() && !$results->whereIn('status', ['failed', 'error'])->count(),
                 'testsRunning' => ($tests['state'] ?? null) === 'running',
+                'unmetRequirements' => $manifests->exists($site->projectRoot()) ? count($manifests->unmetRequirements($site)) : 0,
                 'sandbox' => ($sandbox['state'] ?? null) === 'done' ? $sandbox['verdict'] : (($sandbox['state'] ?? null) === 'running' ? 'running' : null),
             ];
         }

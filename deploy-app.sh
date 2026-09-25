@@ -31,6 +31,8 @@ if [[ -f "/home/$SUDO_USER/.ldev/app/artisan" ]]; then
         || echo "⚠️  Dashboard backup failed — continuing, but there is no fresh snapshot to fall back on" >&2
 fi
 rsync -a "$SCRIPT_DIR/control-app/" "/home/$SUDO_USER/.ldev/app/"
+sudo -u "$SUDO_USER" mkdir -p "/home/$SUDO_USER/.config/ldev"
+printf '%s\n' "$SCRIPT_DIR" | sudo -u "$SUDO_USER" tee "/home/$SUDO_USER/.config/ldev/source-path" >/dev/null
 for retired in \
     2024_01_01_000007_add_worker_flags_to_sites_table.php \
     2024_01_01_000009_add_node_version_to_sites_table.php \
@@ -72,9 +74,22 @@ Restart=always
 WantedBy=default.target
 EOF
 
+cat > /etc/systemd/user/ldev-dumps.service <<EOF
+[Unit]
+Description=Linux Dev dump() collector
+
+[Service]
+ExecStart=/usr/bin/php /home/$SUDO_USER/.ldev/app/artisan ldev:dump-server
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
 loginctl enable-linger "$SUDO_USER"
-sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user enable ldev-dashboard.service
-sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user restart ldev-dashboard.service
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user daemon-reload
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user enable ldev-dashboard.service ldev-dumps.service
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" systemctl --user restart ldev-dashboard.service ldev-dumps.service
 
 cat > /etc/systemd/user/ldev-renew-certs.service <<EOF
 [Unit]

@@ -10,6 +10,7 @@ use App\Services\DatabaseProvisioner;
 use App\Services\DatabaseBackupManager;
 use App\Services\NodeVersionManager;
 use App\Services\HostsFileManager;
+use App\Services\ProjectManifest;
 use App\Models\Setting;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -65,6 +66,13 @@ new class extends Component {
     public $projectComposerNote = null;
     public $projectComposerError = null;
     public $envEditorTabs = [];
+    public $manifestExists = false;
+    public $manifestDiffs = [];
+    public $manifestWarnings = [];
+    public $manifestRequirements = [];
+    public $manifestVersions = [];
+    public $manifestNote = null;
+    public $manifestError = null;
 
     protected array $knownPhpVersions = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
 
@@ -87,6 +95,94 @@ new class extends Component {
         $this->refreshHosts();
         $this->loadEnvContent();
         $this->loadProjectComposer();
+        $this->loadManifest();
+    }
+
+    public function loadManifest()
+    {
+        $service = new ProjectManifest;
+        $manifest = $service->read($this->site->projectRoot());
+        $this->manifestExists = $service->exists($this->site->projectRoot());
+        $this->manifestWarnings = $service->warnings;
+        $this->manifestDiffs = $manifest ? $service->differences($this->site, $manifest) : [];
+        $this->manifestRequirements = $service->checkRequirements($manifest['requires'] ?? []);
+        $this->manifestVersions = array_intersect_key($manifest ?? [], ['php' => true, 'node' => true]);
+    }
+
+    public function keepVersionForEveryone(string $key)
+    {
+        if (!in_array($key, ['php', 'node'], true)) {
+            return;
+        }
+
+        $version = $key === 'php' ? $this->site->php_version : $this->site->node_version;
+        if (!$version) {
+            return;
+        }
+
+        $this->manifestNote = null;
+        $this->manifestError = null;
+        try {
+            (new ProjectManifest)->setValues($this->site->projectRoot(), [$key => $version]);
+        } catch (\Throwable $e) {
+            $this->manifestError = $e->getMessage();
+            return;
+        }
+
+        $this->loadManifest();
+        $this->loadEnvContent();
+        $this->manifestNote = ProjectManifest::FILENAME . ' now says ' . ($key === 'php' ? 'PHP' : 'Node') . " {$version}. Commit it so the team gets it.";
+    }
+
+    public function switchBackToManifestVersion(string $key)
+    {
+        $version = $this->manifestVersions[$key] ?? null;
+        if (!in_array($key, ['php', 'node'], true) || !$version) {
+            return;
+        }
+
+        if ($key === 'php') {
+            $this->phpVersion = $version;
+            $this->updatedPhpVersion($version);
+        } else {
+            $this->nodeVersion = $version;
+            $this->updatedNodeVersion($version);
+        }
+    }
+
+    public function applyManifest()
+    {
+        $this->manifestNote = null;
+        $this->manifestError = null;
+
+        $service = new ProjectManifest;
+        $manifest = $service->read($this->site->projectRoot());
+        if ($manifest === null) {
+            $this->manifestError = 'There is no valid ' . ProjectManifest::FILENAME . ' in this project.';
+            return;
+        }
+
+        [$applied, $warnings] = $service->apply($this->site, array_diff_key($manifest, ['database' => true]));
+        $this->mount($this->site->fresh());
+        $this->manifestNote = $applied ? 'Applied from ' . ProjectManifest::FILENAME . '.' : 'Nothing to change.';
+        $this->manifestError = $warnings ? implode(' ', $warnings) : null;
+    }
+
+    public function saveManifest()
+    {
+        $this->manifestNote = null;
+        $this->manifestError = null;
+
+        try {
+            (new ProjectManifest)->write($this->site);
+        } catch (\Throwable $e) {
+            $this->manifestError = 'Could not write ' . ProjectManifest::FILENAME . ': ' . $e->getMessage();
+            return;
+        }
+
+        $this->loadManifest();
+        $this->loadEnvContent();
+        $this->manifestNote = 'Saved to ' . ProjectManifest::FILENAME . '. Commit it so everyone gets the same setup.';
     }
 
     protected function latestKnownNodeVersion(): string
@@ -217,6 +313,7 @@ new class extends Component {
             'testing' => ['label' => '.env.testing', 'path' => $root . '/.env.testing', 'always' => false],
             'phpunit' => ['label' => 'phpunit.xml', 'path' => $root . '/phpunit.xml', 'always' => false],
             'phpunit_dist' => ['label' => 'phpunit.xml.dist', 'path' => $root . '/phpunit.xml.dist', 'always' => false],
+            'manifest' => ['label' => 'ldev.json', 'path' => $root . '/' . ProjectManifest::FILENAME, 'always' => false],
             'gitignore' => ['label' => '.gitignore', 'path' => $root . '/.gitignore', 'always' => true],
         ];
     }
@@ -250,6 +347,14 @@ new class extends Component {
             }
         }
 
+        if ($this->envEditorTarget === 'manifest') {
+            $decoded = json_decode($this->envContent, true);
+            if (!is_array($decoded) || (array_is_list($decoded) && $decoded !== [])) {
+                $this->envError = 'Not saved: ldev.json must be a valid JSON object' . (json_last_error() ? ' (' . json_last_error_msg() . ')' : '') . '.';
+                return;
+            }
+        }
+
         try {
             if ($this->envEditorTarget === 'env' && File::exists($path)) {
                 File::copy($path, $this->envPath() . '.backup');
@@ -257,6 +362,9 @@ new class extends Component {
             File::put($path, $this->envContent);
             $this->hasEnvBackup = File::exists($this->envPath() . '.backup');
             $this->envSaved = true;
+            if ($this->envEditorTarget === 'manifest') {
+                $this->loadManifest();
+            }
         } catch (\Throwable $e) {
             $this->envError = $e->getMessage();
         }
@@ -381,6 +489,7 @@ new class extends Component {
 
         $this->site->update(['php_version' => $value]);
         (new NginxConfigGenerator)->generate($this->site);
+        $this->loadManifest();
     }
 
     public function updatedNodeVersion($value)
@@ -401,6 +510,7 @@ new class extends Component {
         }
 
         $this->refreshActiveNodeVersion();
+        $this->loadManifest();
     }
 
     public function selectDatabase(string $driver)
@@ -651,6 +761,16 @@ new class extends Component {
     {
         $this->site->update(['scheduler_enabled' => !$this->site->scheduler_enabled]);
         (new SupervisorConfigGenerator)->generate($this->site);
+    }
+
+    public function toggleMeilisearch()
+    {
+        $provisioner = new \App\Services\MeilisearchProvisioner;
+        $this->site->usesMeilisearch()
+            ? $provisioner->disable($this->site->projectRoot())
+            : $provisioner->enable($this->site->projectRoot());
+        $this->loadEnvContent();
+        $this->loadManifest();
     }
 
     public function toggleAutoBackup()

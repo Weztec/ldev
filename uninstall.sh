@@ -11,14 +11,16 @@ echo "🧹 Uninstalling Linux Dev..."
 USER_ID="$(id -u "$SUDO_USER")"
 
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-dashboard.service 2>/dev/null
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-dumps.service 2>/dev/null
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-mailpit.service 2>/dev/null
-sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-minio.service 2>/dev/null
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-rustfs.service 2>/dev/null
+sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-meilisearch.service 2>/dev/null
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-renew-certs.timer 2>/dev/null
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-scan-sites.timer 2>/dev/null
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-backup-databases.timer 2>/dev/null
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-check-versions.timer 2>/dev/null
 sudo -u "$SUDO_USER" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user disable --now ldev-check-health.timer 2>/dev/null
-rm -f /etc/systemd/user/ldev-dashboard.service /etc/systemd/user/ldev-mailpit.service /etc/systemd/user/ldev-minio.service \
+rm -f /etc/systemd/user/ldev-dashboard.service /etc/systemd/user/ldev-dumps.service /etc/systemd/user/ldev-mailpit.service /etc/systemd/user/ldev-rustfs.service /etc/systemd/user/ldev-meilisearch.service \
     /etc/systemd/user/ldev-renew-certs.service /etc/systemd/user/ldev-renew-certs.timer \
     /etc/systemd/user/ldev-scan-sites.service /etc/systemd/user/ldev-scan-sites.timer \
     /etc/systemd/user/ldev-backup-databases.service /etc/systemd/user/ldev-backup-databases.timer \
@@ -68,10 +70,11 @@ rm -rf "/home/$SUDO_USER/.ldev/scripts"
 rm -rf "/home/$SUDO_USER/.config/ldev"
 rm -rf "/home/$SUDO_USER/.ldev/storage/dependency-sandbox"
 rm -rf "/home/$SUDO_USER/.ldev/storage/test-runs"
+rm -rf "/home/$SUDO_USER/.ldev/storage/dumps"
 rm -f "/home/$SUDO_USER/.local/share/applications/ldev.desktop"
 
 echo "✅ Linux Dev uninstalled."
 echo "Left untouched on purpose: installed packages (nginx, php, mariadb, postgresql, valkey,"
-echo "memcached, supervisor, node, composer, mkcert, mailpit, minio), /home/$SUDO_USER/Sites"
-echo "(your project files) and /home/$SUDO_USER/.ldev/storage (MinIO bucket data), if any exist there."
+echo "memcached, supervisor, node, composer, mkcert, mailpit, rustfs, meilisearch), /home/$SUDO_USER/Sites"
+echo "(your project files) and /home/$SUDO_USER/.ldev/storage (S3 bucket data), if any exist there."
 echo "Remove those by hand if you actually want them gone too."

@@ -32,7 +32,7 @@
                 <h2 class="text-lg font-medium">Getting started</h2>
                 <p>
                     Linux Dev is a Laravel Valet/Herd-style local development environment for Fedora 44 KDE Plasma:
-                    nginx, PHP 7.4&ndash;8.5, MariaDB, PostgreSQL, Valkey, Memcached, Mailpit, MinIO, Supervisor,
+                    nginx, PHP 7.4&ndash;8.5, MariaDB, PostgreSQL, Valkey, Memcached, Mailpit, RustFS (S3 storage), Supervisor,
                     mkcert and dnsmasq, provisioned by shell scripts, plus this dashboard for managing it day to day.
                 </p>
                 <h3 class="font-medium">Installing</h3>
@@ -51,7 +51,7 @@
                 <pre class="text-xs bg-gray-50 dark:bg-gray-900 rounded p-3 overflow-x-auto font-mono">sudo ./deploy-app.sh</pre>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Want to pick up newer versions of the underlying OS packages, or re-apply configuration:</p>
                 <pre class="text-xs bg-gray-50 dark:bg-gray-900 rounded p-3 overflow-x-auto font-mono">sudo ./setup-environment.sh</pre>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Remove everything Linux Dev installed (your projects in <span class="font-mono">~/Sites</span> and MinIO's real bucket data are left alone):</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Remove everything Linux Dev installed (your projects in <span class="font-mono">~/Sites</span> and your S3 bucket data are left alone):</p>
                 <pre class="text-xs bg-gray-50 dark:bg-gray-900 rounded p-3 overflow-x-auto font-mono">sudo ./uninstall.sh</pre>
                 <h3 class="font-medium">Opening the dashboard</h3>
                 <p>
@@ -65,7 +65,7 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         <tr><td class="py-1 pr-3 font-mono whitespace-nowrap">~/Sites</td><td class="py-1 text-gray-500 dark:text-gray-400">Every project you create or link, one directory per project.</td></tr>
                         <tr><td class="py-1 pr-3 font-mono whitespace-nowrap">~/.ldev/app</td><td class="py-1 text-gray-500 dark:text-gray-400">This dashboard itself &mdash; fully rebuildable by <span class="font-mono">deploy-app.sh</span>.</td></tr>
-                        <tr><td class="py-1 pr-3 font-mono whitespace-nowrap">~/.ldev/storage</td><td class="py-1 text-gray-500 dark:text-gray-400">MinIO's real bucket data. Never wiped by re-installing or uninstalling.</td></tr>
+                        <tr><td class="py-1 pr-3 font-mono whitespace-nowrap">~/.ldev/storage</td><td class="py-1 text-gray-500 dark:text-gray-400">Your S3 bucket data (RustFS) and Meilisearch's indexes. Never wiped by re-installing or uninstalling.</td></tr>
                         <tr><td class="py-1 pr-3 font-mono whitespace-nowrap">~/.config/ldev</td><td class="py-1 text-gray-500 dark:text-gray-400">nginx vhosts, certs, logs, Supervisor jobs, the dashboard token, backups.</td></tr>
                     </tbody>
                 </table>
@@ -139,7 +139,7 @@
                     the example tests), whether to also provision S3-compatible storage or Laravel Reverb, and
                     whether to create a brand-new remote repository (GitHub or Bitbucket) for it and push the
                     initial commit.</p>
-                {!! $img('wizard-step2-scaffold', 'Step 2 for a fresh scaffold, showing the starter kit dropdown and the repository/S3/Reverb checkboxes') !!}
+                {!! $img('wizard-step2-scaffold', 'Step 2 for a fresh scaffold, showing the starter kit dropdown and the Pest, repository, S3 and Reverb checkboxes') !!}
                 <p>Click <strong>Create project</strong>. Scaffolding a new project genuinely takes 30&ndash;90
                     seconds (composer/npm installs, migrations) &mdash; the button shows a loading state the whole
                     time. You're redirected to the dashboard once it's done.</p>
@@ -177,21 +177,25 @@
                     updates</strong> to freeze it while you're reading something). <strong>Dependencies</strong> and <strong>Tests</strong> start collapsed, showing only a one-line summary (advisories, outdated counts, sandbox state; passed/failed from the last run). Click the title to expand; their buttons (such as <em>Run all</em>) expand them too. A tab bar under the title
                     switches to <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('project-settings')">Project settings</button>.</p>
                 {!! $img('overview-tabs', 'The Overview / Project settings tab bar') !!}
+                <p>A project without an <span class="font-mono">ldev.json</span> shows a notice at the top of this page. <strong>Create ldev.json</strong> writes one from the project's current settings, ready to commit (see Project settings &rarr; Project file).</p>
+                {!! $img('overview-ldevjson-notice', 'The notice shown when a project has no ldev.json yet, with its Create ldev.json button') !!}
                 <ul class="list-disc pl-5 space-y-1">
-                    <li><strong>Quick launch</strong> &mdash; one click to Mailpit (catches all outbound mail), the MinIO console, Adminer, and the Logs page.</li>
+                    <li><strong>Quick launch</strong> &mdash; one click to Mailpit (catches all outbound mail), the S3 storage console, Meilisearch (when the project uses it), Adminer, and the Logs page.</li>
                     <li><strong>Details</strong> &mdash; the project's real path and detected framework/version.</li>
                     <li><strong>Git</strong> &mdash; branch, dirty/ahead/behind status, a diff viewer, and a Push button.</li>
                     <li><strong>Resources</strong> &mdash; disk usage and how many PHP-FPM workers are actually running for this project's PHP version.</li>
                     <li><strong>Public demo link</strong> &mdash; a free, no-signup Cloudflare quick tunnel, for showing a project to someone outside your machine. Start it right before a call, stop it after &mdash; it's meant to be temporary, not a permanent public URL.</li>
                 </ul>
-                {!! $img('overview-quicklaunch', 'The Quick launch panel with links to Mailpit, MinIO console, Adminer and Logs') !!}
+                {!! $img('overview-quicklaunch', 'The Quick launch panel with links to Mailpit, the S3 storage console, Adminer and Logs') !!}
                 {!! $img('overview-grid', 'The Details, Git, Resources and Public demo link panels side by side') !!}
                 <ul class="list-disc pl-5 space-y-1">
                     <li><strong>Dependencies</strong> &mdash; security advisories and outdated Composer/npm packages, with updates tested in a sandbox copy before they touch the project. See <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('dependencies-tests')">Dependencies &amp; tests</button>.</li>
                     <li><strong>Tests</strong> &mdash; run all of the project's Pest/PHPUnit tests or pick files and single tests, with a result for every test and your own per-machine test settings. See <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('dependencies-tests')">Dependencies &amp; tests</button>.</li>
+                    <li><strong>Dumps</strong> &mdash; <strong>Send dump() and dd() here</strong> collects the project's <span class="font-mono">dump()</span> and <span class="font-mono">dd()</span> output on this page instead of in the browser, with the time, file and line, and the request or artisan command it came from. That makes JSON responses, Livewire requests, queued jobs and commands easy to debug. It adds <span class="font-mono">VAR_DUMPER_FORMAT</span> and <span class="font-mono">VAR_DUMPER_SERVER</span> to the project's <span class="font-mono">.env</span>, and switching off removes them. The collector (<span class="font-mono">ldev-dumps</span>) only listens on this machine; if it isn't running, dumps show in the page as usual. The last 100 are kept.</li>
                     <li><strong>Background processes</strong> &mdash; live status and recent output for the queue worker, Reverb, the scheduler, and any custom jobs (see <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('background-jobs')">Background jobs</button>).</li>
                     <li><strong>Application log</strong> &mdash; a tail of this project's own <span class="font-mono">storage/logs/laravel.log</span>.</li>
                 </ul>
+                {!! $img('overview-dumps', 'The Dumps panel showing a dump from a web request and one from an artisan tinker command') !!}
                 {!! $img('overview-background', 'The Background processes panel showing each program\'s live status') !!}
                 {!! $img('overview-applog', 'The Application log panel') !!}
 
@@ -245,13 +249,18 @@
                     kept separate from the Overview page so a background refresh there can never overwrite
                     something you're mid-editing here.</p>
                 <ul class="list-disc pl-5 space-y-1">
+                    <li><strong>Project file (<span class="font-mono">ldev.json</span>)</strong> &mdash; <strong>Save current settings to ldev.json</strong> writes this site's PHP and Node versions, database driver and name, flags, queue settings and custom jobs to a file in the project root. New projects created from a starter kit get one automatically, included in their first commit; for any other project without one, the Overview page shows a <strong>Create ldev.json</strong> notice. <strong>View file</strong> opens it in the Environment / project files editor, where it can also be edited (it is checked as JSON before saving). Commit it, and anyone who adds or clones the project gets the same setup automatically (a cloned repository's ldev.json replaces the wizard's PHP, Node and database choices). The file never holds passwords or <span class="font-mono">.env</span> values. Changing the PHP or Node version never changes the file on its own, so you can try a version safely: a note under the dropdown says you're trying it on this machine only, with <strong>Keep … for everyone</strong> (writes just that version to ldev.json, ready to commit) and <strong>Switch back to …</strong>. When the site and the file differ, the card lists the differences and <strong>Apply project file</strong> brings the site back in line; the database is only set up from the file when a project is first added. An optional <span class="font-mono">requires</span> section, such as <span class="font-mono">{"mariadb": "&gt;=11.4"}</span>, states the service versions the project needs (mariadb, postgresql, valkey, memcached, nginx). Linux Dev checks them against what's installed and shows a <em>requirements not met</em> badge on the Sites list when they don't match. Services are shared by every project, so they are checked, not run per project the way PHP and Node versions are.</li>
+                </ul>
+                {!! $img('settings-projectfile', 'The Project file card listing a difference between the site and its ldev.json, and one service requirement met and one not') !!}
+                {!! $img('settings-ldevjson-view', 'ldev.json opened with View file, in the Environment / project files editor') !!}
+                <ul class="list-disc pl-5 space-y-1">
                     <li><strong>Environment</strong> &mdash; change the PHP version, Node.js version, or database driver at any time, and restart PHP-FPM. Changing the database offers the same create-new/use-existing choice as the wizard, plus the option to run migrations and/or seed the new one.</li>
                 </ul>
                 {!! $img('settings-environment', 'The Environment panel with PHP version, Node.js version and Database dropdowns') !!}
                 <ul class="list-disc pl-5 space-y-1">
-                    <li><strong>Flags</strong> &mdash; Xdebug, Queue worker, Reverb, Scheduler, and automatic daily database backup, each a single switch.</li>
+                    <li><strong>Flags</strong> &mdash; Xdebug, Queue worker, Reverb, Scheduler, Meilisearch, and automatic daily database backup, each a single switch. <strong>Meilisearch search</strong> connects the project to the local Meilisearch, a fast, typo-tolerant search engine with filters and facets: it sets <span class="font-mono">MEILISEARCH_HOST=http://127.0.0.1:7700</span> and an empty <span class="font-mono">MEILISEARCH_KEY</span>, which any Meilisearch client can read, plus <span class="font-mono">SCOUT_DRIVER=meilisearch</span> for projects that use Laravel Scout (install <span class="font-mono">laravel/scout</span> and <span class="font-mono">meilisearch/meilisearch-php</span>). Projects that already require <span class="font-mono">meilisearch/meilisearch-php</span> are switched on automatically when added.</li>
                 </ul>
-                {!! $img('settings-flags', 'The Flags panel, five switches') !!}
+                {!! $img('settings-flags', 'The Flags panel with its six switches, including Meilisearch') !!}
                 <ul class="list-disc pl-5 space-y-1">
                     <li><strong>Queue worker settings</strong> &mdash; which queues to listen on (comma-separated, e.g. <span class="font-mono">xero,default</span> &mdash; a worker only processes "default" unless told otherwise), how many worker processes, sleep/tries/max-time. Only shown once the Queue worker flag above is on.</li>
                     <li><strong>Custom background jobs</strong> &mdash; see <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('background-jobs')">Background jobs</button> below.</li>
@@ -266,7 +275,7 @@
                     <li><strong>Composer credentials</strong> &mdash; credentials for private Composer repositories that apply to this project only, such as its own Flux Pro license. They override the global ones from the Settings page for the same host; hosts you don't override keep using the global credentials. The list shows both, with <em>Override for this project</em> next to each global one. They are written to the project's own <span class="font-mono">auth.json</span>, which Composer reads wherever it runs (the dashboard or your terminal). ldev makes sure that file is git-ignored (adding it to <span class="font-mono">.git/info/exclude</span> on this machine if the project's <span class="font-mono">.gitignore</span> doesn't cover it) and refuses to save if <span class="font-mono">auth.json</span> is already tracked by git, so a license key is never committed. Deleting an override puts the project back on the global credentials.</li>
                     <li><strong>Environment / project files</strong> &mdash; a direct editor for <span class="font-mono">.env</span>, its rolling backup, and <span class="font-mono">.gitignore</span>, plus <span class="font-mono">.env.example</span>, <span class="font-mono">.env.testing</span>, <span class="font-mono">phpunit.xml</span> and <span class="font-mono">phpunit.xml.dist</span> when the project has them. The phpunit files are checked for valid XML before saving. These are the project's shared copies; for test settings that only apply to your machine, use <em>Test environment</em> on the Overview.</li>
                 </ul>
-                {!! $img('settings-envfile', 'The Environment / project files editor with its .env, .env.example, phpunit.xml and .gitignore tabs (placeholder content, not a real key)') !!}
+                {!! $img('settings-envfile', 'The Environment / project files editor with its .env, .env.example, phpunit.xml, ldev.json and .gitignore tabs (placeholder content, not a real key)') !!}
 
             @elseif($section === 'background-jobs')
                 <h2 class="text-lg font-medium">Background jobs (Supervisor)</h2>
@@ -317,7 +326,7 @@
                 <h3 class="font-medium">Services page</h3>
                 <p>A switch per background service this machine runs: nginx, PHP-FPM, MariaDB, PostgreSQL,
                     Valkey (a Redis drop-in), Memcached and Supervisor (system-wide services shared by every
-                    project), plus Mailpit and MinIO (run as your own user). Use this to stop something you're
+                    project), plus Mailpit, RustFS (S3 storage), Meilisearch and the dump collector (run as your own user). Use this to stop something you're
                     not using, or restart something that's misbehaving.</p>
                 <p>Status refreshes every 15 seconds while the page is open. A service that crashed shows a red
                     dot and <em>failed</em>; one you switched off yourself just shows grey. Above the list are
@@ -330,7 +339,7 @@
                     the CPUs or more) or <em>Overloaded</em> (more than the CPUs can handle). The 15-minute figure
                     tells you whether a spike is brief or ongoing.</p>
                 {!! $img('services-system', 'The System card with OS, kernel, uptime and the labelled 1, 5 and 15 minute load averages') !!}
-                {!! $img('services', 'The Services page, one switch per service with its installed version') !!}
+                {!! $img('services', 'The Services page, with the System, Memory & disk and Databases & certificates cards above one switch per service and its installed version') !!}
                 <h3 class="font-medium">PHP Versions page</h3>
                 <p>Every PHP version Linux Dev installs (7.4 through 8.5) runs its own PHP-FPM pool, independently
                     startable/stoppable here. A project's chosen PHP version (set in the wizard or Project
@@ -344,10 +353,11 @@
                     new ones from the New Project wizard. Add a token with a provider, username, the token/secret
                     itself, and optionally an expiry date &mdash; the page warns you as it approaches, since
                     neither provider offers a way to auto-renew one.</p>
-                {!! $img('repositories', 'The Repositories page\'s saved-token table, with provider, username, expiry and actions') !!}
+                {!! $img('repositories', 'The Repositories page: the saved-token table, then each account\'s repositories with the latest commit\'s date and author, a Public or Private badge and a Clone button') !!}
                 <p>Once a token is saved, this page also lists every repository it can see, each with a
                     <strong>Clone</strong> button that jumps straight into the New Project wizard with the URL
-                    already filled in.</p>
+                    already filled in. Each repository also shows when its latest commit was made and who made it,
+                    and whether it is <strong>Public</strong> (green) or <strong>Private</strong> (grey).</p>
                 <p>Prefer not to use a token at all? An <span class="font-mono">https://</span> URL needs one only
                     for a private repository &mdash; an SSH URL (<span class="font-mono">git@host:user/repo.git</span>)
                     uses whatever SSH key this machine already has trusted with that host instead.</p>
@@ -376,12 +386,12 @@
                 </ul>
                 {!! $img('settings-appearance', 'The Appearance panel, Light/Dark/System buttons') !!}
                 <ul class="list-disc pl-5 space-y-1">
-                    <li><strong>Updates</strong> &mdash; shows the installed Linux Dev version and checks GitHub for a newer release (update with <span class="font-mono">git pull</span> then <span class="font-mono">sudo ./deploy-app.sh</span>), and checks PHP/Node/Laravel/Livewire/Flux against what's actually current upstream, once a day automatically or on demand. It also lists pending Fedora updates for the stack's own packages (nginx, PHP, MariaDB, PostgreSQL, Valkey and so on) with a ready-to-copy <span class="font-mono">sudo dnf upgrade</span> command. When anything is available, a yellow banner appears at the top of every page and the Settings link gets a badge. Dismissing the banner hides it until something new comes out.</li>
+                    <li><strong>Updates</strong> &mdash; shows the installed Linux Dev version (also shown under Help at the bottom of the sidebar) and checks GitHub for a newer release. When one is out, the sidebar says <em>Update available</em> and <strong>Update</strong> shows the exact command to run in a terminal, with a <strong>Copy</strong> button, for example <span class="font-mono">cd ~/ldev &amp;&amp; git pull &amp;&amp; sudo ./install.sh</span>. It needs your sudo password, so it can't run from the dashboard itself, shows the npm that comes with each installed Node version, with an <strong>Upgrade npm</strong> button when a newer, compatible npm is out (it runs <span class="font-mono">npm install -g npm@&lt;latest&gt;</span> for that Node version only, the same as the upgrade notice npm prints in a terminal), and checks PHP/Node/Laravel/Livewire/Flux against what's actually current upstream, once a day automatically or on demand. It also lists pending Fedora updates for the stack's own packages (nginx, PHP, MariaDB, PostgreSQL, Valkey and so on) with a ready-to-copy <span class="font-mono">sudo dnf upgrade</span> command. When anything is available, a yellow banner appears at the top of every page and the Settings link gets a badge. Dismissing the banner hides it until something new comes out.</li>
                 </ul>
-                {!! $img('settings-updates', 'The Updates panel showing each component checked against its latest release') !!}
+                {!! $img('settings-updates', 'The Updates panel showing the installed Linux Dev version, the npm for each installed Node version with Upgrade npm buttons, and each component checked against its latest release') !!}
                 <ul class="list-disc pl-5 space-y-1">
                     <li><strong>Desktop notifications</strong> &mdash; a KDE notification when a service fails, a certificate is about to expire, disk space runs low (checked every 5 minutes), or new updates appear (checked daily). Each problem is announced once until it clears. Use <em>Send test</em> to confirm they reach your desktop.</li>
-                    <li><strong>Local service credentials</strong> &mdash; MinIO's URL/username/password and where its bucket data lives on disk, so you're not digging through config files to find them. Shown in full on your own machine (not pictured here, since it's your real credentials).</li>
+                    <li><strong>Local service credentials</strong> &mdash; the S3 storage console's URL, username and password and where its bucket data lives on disk, so you're not digging through config files to find them. Shown in full on your own machine (not pictured here, since it's your real credentials).</li>
                     <li><strong>Global Composer credentials</strong> &mdash; for a private Composer package repository (e.g. a licensed package), so <span class="font-mono">composer install/update</span> can authenticate for every project. A single project can use a different account or license for the same host; see <em>Composer credentials</em> under <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('project-settings')">Project settings</button>. They're mirrored to Composer's own <span class="font-mono">auth.json</span> with a snapshot after every change, so if either copy is lost the other rebuilds it automatically (checked every 5 minutes).</li>
                     <li><strong>Dashboard backup</strong> &mdash; see <button type="button" class="text-blue-500 hover:underline" wire:click="setSection('backups')">Backups &amp; recovery</button>.</li>
                 </ul>
@@ -442,9 +452,7 @@ cd ~/.ldev/app &amp;&amp; php artisan ldev:generate-token</pre>
                         exactly what's wrong (nothing is written until it's valid).
                     </li>
                     <li>
-                        <strong>MinIO.</strong> MinIO's own open-source project has been archived upstream, so
-                        Linux Dev runs the last version it ever published. Your existing buckets keep working; there
-                        just won't be further MinIO updates.
+                        <strong>S3 storage.</strong> Linux Dev uses RustFS for local S3 storage. Earlier versions used MinIO, whose builds are no longer published; updating moves your existing MinIO buckets into RustFS once, with the same address, username and password, so projects keep working unchanged. Each bucket is checked after the move, then MinIO and its data are removed. If anything fails, MinIO's data is left untouched and the next update tries again.
                     </li>
                     <li>
                         <strong>Something else went wrong.</strong> Check the Logs page first &mdash; the

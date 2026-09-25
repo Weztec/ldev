@@ -58,6 +58,9 @@
                             @elseif(($siteHealth['sandbox'] ?? null) === 'issues')
                                 <span class="rounded px-1.5 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300" title="The last sandbox test of a dependency update found problems">update has problems</span>
                             @endif
+                            @if($siteHealth['unmetRequirements'] ?? 0)
+                                <span class="rounded px-1.5 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300" title="Installed service versions don't match this project's ldev.json requires">requirements not met</span>
+                            @endif
                             @if(($siteHealth['outdated'] ?? 0) && !($siteHealth['vulnerable'] ?? 0))
                                 <span class="rounded px-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" title="Outdated Composer and npm packages">{{ $siteHealth['outdated'] }} outdated</span>
                             @endif

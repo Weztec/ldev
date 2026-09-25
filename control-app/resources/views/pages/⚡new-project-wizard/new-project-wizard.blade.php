@@ -59,6 +59,7 @@
                         placeholder="{{ $repoProtocol === 'ssh' ? 'git@bitbucket.org:user/repo.git' : 'https://github.com/user/repo.git' }}"
                         class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600" />
                     @error('repoUrl') <span class="text-xs text-red-600 dark:text-red-400">{{ $message }}</span> @enderror
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">If the repository has an <span class="font-mono">ldev.json</span>, its PHP, Node, database and other settings are used instead of the choices below.</p>
                 </div>
                 @if($repoProtocol === 'https')
                     <div>
@@ -212,7 +213,7 @@
                 @endif
             @endif
             <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" wire:model="s3" /> Local S3 storage (MinIO) for files/images
+                <input type="checkbox" wire:model="s3" /> Local S3 storage (RustFS) for files/images
             </label>
             <label class="flex items-center gap-2 text-sm">
                 <input type="checkbox" wire:model="reverb" /> WebSockets (Laravel Reverb)

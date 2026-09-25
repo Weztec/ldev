@@ -23,20 +23,31 @@ $resolveUsername = function (): string {
     return 'dev';
 };
 
-$minioEnvFile = $home . '/.config/ldev/minio.env';
-$minioEnv = [];
-if (is_file($minioEnvFile)) {
-    foreach (file($minioEnvFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+$resolveTimezone = function (): string {
+    $link = @readlink('/etc/localtime');
+    if ($link && preg_match('#zoneinfo/(.+)$#', $link, $m) && in_array($m[1], timezone_identifiers_list(), true)) {
+        return $m[1];
+    }
+    return date_default_timezone_get();
+};
+
+$sourcePathFile = $home . '/.config/ldev/source-path';
+$sourcePath = is_file($sourcePathFile) ? trim((string) file_get_contents($sourcePathFile)) : '';
+
+$s3EnvFile = $home . '/.config/ldev/s3.env';
+$s3Env = [];
+if (is_file($s3EnvFile)) {
+    foreach (file($s3EnvFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         [$key, $value] = array_pad(explode('=', $line, 2), 2, null);
         if ($key !== null) {
-            $minioEnv[$key] = $value;
+            $s3Env[$key] = $value;
         }
     }
 }
 
 return [
 
-    'version' => '1.0.0',
+    'version' => '1.1.0',
 
     'platform' => 'fedora',
 
@@ -45,6 +56,10 @@ return [
     'home' => $home,
 
     'os_username' => $resolveUsername(),
+
+    'timezone' => $resolveTimezone(),
+
+    'source_path' => $sourcePath !== '' && is_dir($sourcePath) ? $sourcePath : null,
 
     'nginx_config_dir' => $home . '/.config/ldev/nginx',
 
@@ -58,17 +73,23 @@ return [
 
     'sites_path' => $home . '/Sites',
 
-    'minio_data_dir' => $home . '/.ldev/storage/minio-data',
+    's3_data_dir' => $home . '/.ldev/storage/s3-data',
 
     'dependency_sandbox_dir' => $home . '/.ldev/storage/dependency-sandbox',
 
     'test_runs_dir' => $home . '/.ldev/storage/test-runs',
 
-    'minio' => [
-        'access_key' => $minioEnv['MINIO_ROOT_USER'] ?? 'ldevlocal',
-        'secret_key' => $minioEnv['MINIO_ROOT_PASSWORD'] ?? '',
+    'dumps_dir' => $home . '/.ldev/storage/dumps',
+
+    'dump_server' => '127.0.0.1:9912',
+
+    'meilisearch_url' => 'http://127.0.0.1:7700',
+
+    's3' => [
+        'access_key' => $s3Env['RUSTFS_ACCESS_KEY'] ?? 'ldevlocal',
+        'secret_key' => $s3Env['RUSTFS_SECRET_KEY'] ?? '',
         'endpoint' => 'http://127.0.0.1:9000',
-        'console' => 'http://127.0.0.1:9001',
+        'console' => 'http://127.0.0.1:9001/rustfs/console/',
     ],
 
     'services' => [
@@ -77,7 +98,7 @@ return [
             'php74-php-fpm', 'php80-php-fpm', 'php81-php-fpm', 'php82-php-fpm',
             'php83-php-fpm', 'php84-php-fpm', 'php85-php-fpm',
         ],
-        'user' => ['ldev-mailpit', 'ldev-minio'],
+        'user' => ['ldev-mailpit', 'ldev-rustfs', 'ldev-meilisearch', 'ldev-dumps'],
     ],
 
     'certs_dir' => $home . '/.config/ldev/certs',

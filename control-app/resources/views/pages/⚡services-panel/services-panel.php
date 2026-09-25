@@ -63,7 +63,9 @@ new class extends Component {
 
             'ldev-mailpit' => ['mailpit version 2>&1', '/v([\d.]+)/'],
 
-            'ldev-minio' => ['minio --version 2>&1', '/version (RELEASE\.[\w-]+)/'],
+            'ldev-rustfs' => ['rustfs --version 2>&1', '/rustfs ([\d.]+)/'],
+
+            'ldev-meilisearch' => ['meilisearch --version 2>&1', '/meilisearch ([\d.]+)/'],
             default => [null, null],
         };
 

@@ -16,6 +16,81 @@
     <x-site-tabs :site="$site" active="settings" />
 
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+        <div class="flex flex-wrap justify-between items-center gap-2">
+            <h2 class="font-medium">Project file (<span class="font-mono">ldev.json</span>)</h2>
+            <div class="flex gap-2">
+                @if($manifestExists)
+                    <flux:button size="sm" variant="filled" color="blue" icon="eye" wire:click="switchEnvTarget('manifest')" x-on:click="document.getElementById('project-files').scrollIntoView({ behavior: 'smooth' })">
+                        View file
+                    </flux:button>
+                @endif
+                @if($manifestExists && $manifestDiffs)
+                    <flux:button size="sm" variant="primary" icon="arrow-down-tray" wire:click="applyManifest" wire:loading.attr="disabled" wire:target="applyManifest">
+                        Apply project file
+                    </flux:button>
+                @endif
+                <flux:button size="sm" variant="filled" color="blue" icon="document-arrow-up" wire:click="saveManifest" wire:loading.attr="disabled" wire:target="saveManifest">
+                    Save current settings to ldev.json
+                </flux:button>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+            A file in the project root that records this site's PHP and Node versions, database, flags, queue settings and custom jobs. Commit it and everyone who clones the project gets the same setup automatically. It never contains passwords or <span class="font-mono">.env</span> values.
+        </p>
+
+        @if($manifestNote)
+            <p class="text-xs text-green-600 dark:text-green-400">{{ $manifestNote }}</p>
+        @endif
+        @if($manifestError)
+            <p class="text-xs text-red-600 dark:text-red-400">{{ $manifestError }}</p>
+        @endif
+
+        @if(! $manifestExists)
+            <p class="text-sm text-gray-400 dark:text-gray-500">This project has no ldev.json yet.</p>
+        @elseif(! $manifestDiffs)
+            <p class="text-sm text-green-600 dark:text-green-400">This site matches its ldev.json.</p>
+        @else
+            <div class="text-sm">
+                <p class="text-yellow-700 dark:text-yellow-400 mb-1">This site differs from its ldev.json:</p>
+                <div class="divide-y divide-gray-100 dark:divide-gray-700">
+                    @foreach($manifestDiffs as $diff)
+                        <div class="flex flex-wrap justify-between gap-2 py-1">
+                            <span class="font-mono text-xs">{{ $diff['key'] }}</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">file: <span class="font-mono">{{ $diff['file'] }}</span> &middot; this site: <span class="font-mono">{{ $diff['current'] }}</span></span>
+                        </div>
+                    @endforeach
+                </div>
+                @if(collect($manifestDiffs)->contains(fn ($d) => in_array($d['key'], ['database.driver', 'database.name'], true)))
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">The database is only set up from ldev.json when a project is first added. To switch it now, use the Environment section below.</p>
+                @endif
+            </div>
+        @endif
+
+        @if($manifestRequirements)
+            <div class="text-sm divide-y divide-gray-100 dark:divide-gray-700">
+                @foreach($manifestRequirements as $req)
+                    <div class="flex justify-between gap-2 py-1">
+                        <span>{{ $req['service'] }} <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $req['constraint'] }}</span></span>
+                        @if($req['ok'])
+                            <span class="text-green-600 dark:text-green-400">Installed {{ $req['installed'] }}</span>
+                        @else
+                            <span class="text-red-600 dark:text-red-400">{{ $req['installed'] ? 'Installed ' . $req['installed'] . ' does not match' : 'Not installed' }}</span>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
+        @if($manifestWarnings)
+            <ul class="text-xs text-yellow-700 dark:text-yellow-400 list-disc pl-5">
+                @foreach($manifestWarnings as $warning)
+                    <li>{{ $warning }}</li>
+                @endforeach
+            </ul>
+        @endif
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
         <h2 class="font-medium">Environment</h2>
         <p class="text-xs text-gray-400 dark:text-gray-500">Changing any of these applies immediately — no need to re-scaffold the project.</p>
 
@@ -27,6 +102,19 @@
                         <option value="{{ $version }}">{{ $version }}</option>
                     @endforeach
                 </select>
+                @if(isset($manifestVersions['php']) && $site->php_version && $manifestVersions['php'] !== $site->php_version)
+                    <div class="mt-2 p-2 rounded border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 text-xs text-yellow-800 dark:text-yellow-300 space-y-2">
+                        <p>Trying PHP {{ $site->php_version }} on this machine only. The project's <span class="font-mono">ldev.json</span> says {{ $manifestVersions['php'] }}.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <flux:button size="sm" variant="filled" color="blue" icon="check" wire:click="keepVersionForEveryone('php')" wire:loading.attr="disabled" wire:target="keepVersionForEveryone">
+                                Keep {{ $site->php_version }} for everyone
+                            </flux:button>
+                            <flux:button size="sm" icon="arrow-uturn-left" wire:click="switchBackToManifestVersion('php')" wire:loading.attr="disabled" wire:target="switchBackToManifestVersion">
+                                Switch back to {{ $manifestVersions['php'] }}
+                            </flux:button>
+                        </div>
+                    </div>
+                @endif
                 <div class="flex items-center gap-2 mt-1">
                     <flux:button size="sm" variant="filled" color="blue" icon="arrow-path" wire:click="restartPhpFpm" wire:loading.attr="disabled" wire:target="restartPhpFpm">
                         Restart PHP-FPM
@@ -50,6 +138,20 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         Currently: {{ $activeNodeVersion ?? 'not found' }}
                     </p>
+                    @if(isset($manifestVersions['node']) && $site->node_version && $manifestVersions['node'] !== $site->node_version)
+                        <div class="mt-2 p-2 rounded border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 text-xs text-yellow-800 dark:text-yellow-300 space-y-2">
+                            <p>Trying Node {{ $site->node_version }} on this machine only. The project's <span class="font-mono">ldev.json</span> says {{ $manifestVersions['node'] }}.</p>
+                            <div class="flex flex-wrap gap-2">
+                                <flux:button size="sm" variant="filled" color="blue" icon="check" wire:click="keepVersionForEveryone('node')" wire:loading.attr="disabled" wire:target="keepVersionForEveryone">
+                                    Keep {{ $site->node_version }} for everyone
+                                </flux:button>
+                                <flux:button size="sm" icon="arrow-uturn-left" wire:click="switchBackToManifestVersion('node')" wire:loading.attr="disabled" wire:target="switchBackToManifestVersion">
+                                    Switch back to {{ $manifestVersions['node'] }}
+                                </flux:button>
+                            </div>
+                        </div>
+                    @endif
+
                     <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" wire:loading wire:target="nodeVersion">
                         Installing (if needed) and running npm install/build — this can take a minute…
                     </p>
@@ -188,6 +290,10 @@
         <div class="flex items-center justify-between">
             <span class="text-sm">Scheduler (schedule:work)</span>
             <flux:switch :checked="$site->scheduler_enabled" wire:click="toggleScheduler" />
+        </div>
+        <div class="flex items-center justify-between">
+            <span class="text-sm">Meilisearch search <span class="text-xs text-gray-400 dark:text-gray-500">sets MEILISEARCH_HOST and MEILISEARCH_KEY in .env, plus SCOUT_DRIVER for Laravel Scout</span></span>
+            <flux:switch :checked="$site->usesMeilisearch()" wire:click="toggleMeilisearch" />
         </div>
         @if($dbType)
             <div class="flex items-center justify-between">
@@ -445,7 +551,7 @@
         @endif
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+    <div id="project-files" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
         <div class="flex justify-between items-center">
             <h2 class="font-medium">Environment / project files</h2>
             <div class="flex gap-2">
@@ -482,6 +588,9 @@
                 The project's test configuration, usually committed and shared by every developer.
                 Saved straight to the file after an XML check. For settings that only apply to your
                 machine, use <em>Test environment</em> in the Tests section of the Overview instead.
+            @elseif($envEditorTarget === 'manifest')
+                This project's shared Linux Dev setup, usually committed. Checked as JSON before saving;
+                unknown or invalid values are listed in the Project file card above and ignored.
             @elseif($envEditorTarget === 'gitignore')
                 Saved straight to .gitignore — no rolling backup (its own git history already
                 covers that once committed). Created fresh if the project doesn't have one yet.

@@ -4,6 +4,8 @@
     @php
         $displayName = fn ($service) => match ($service) {
             'valkey' => 'Valkey (Redis)',
+            'ldev-rustfs' => 'RustFS (S3 storage)',
+            'ldev-dumps' => 'dump collector',
             default => str_starts_with($service, 'ldev-') ? substr($service, strlen('ldev-')) : $service,
         };
         $human = fn ($bytes) => \App\Services\SystemInfo::humanBytes($bytes);

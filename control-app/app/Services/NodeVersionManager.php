@@ -77,13 +77,7 @@ class NodeVersionManager
 
     public function npmInstallAndBuild(string $projectPath, string $version): void
     {
-        $this->ensureInstalled($version);
-        $resolved = $this->resolveInstalledDir($version);
-
-        $env = [
-            'HOME' => config('ldev.home'),
-            'PATH' => $this->binPath($resolved) . ':' . (getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin'),
-        ];
+        $env = $this->npmEnv($version);
 
         Process::path($projectPath)->env($env)->timeout(300)->run('npm install')->throw();
 
@@ -91,6 +85,44 @@ class NodeVersionManager
         if (isset($packageJson['scripts']['build'])) {
             Process::path($projectPath)->env($env)->timeout(300)->run('npm run build')->throw();
         }
+    }
+
+    public function writeLockfile(string $projectPath, string $version): void
+    {
+        Process::path($projectPath)->env($this->npmEnv($version))->timeout(300)->run('npm install --package-lock-only')->throw();
+    }
+
+    protected function npmEnv(string $version): array
+    {
+        $this->ensureInstalled($version);
+        $resolved = $this->resolveInstalledDir($version);
+
+        return [
+            'HOME' => config('ldev.home'),
+            'PATH' => $this->binPath($resolved) . ':' . (getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin'),
+        ];
+    }
+
+    public function npmVersion(string $installedVersion): ?string
+    {
+        $result = Process::env([
+            'HOME' => config('ldev.home'),
+            'PATH' => $this->binPath($installedVersion) . ':' . (getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin'),
+        ])->run('npm -v');
+
+        return $result->successful() && preg_match('/^\d+\.\d+\.\d+$/', trim($result->output())) ? trim($result->output()) : null;
+    }
+
+    public function upgradeNpm(string $installedVersion, string $npmVersion): void
+    {
+        if (!in_array($installedVersion, $this->installedVersions(), true) || !preg_match('/^\d+\.\d+\.\d+$/', $npmVersion)) {
+            throw new \InvalidArgumentException('Unknown Node or npm version.');
+        }
+
+        Process::env([
+            'HOME' => config('ldev.home'),
+            'PATH' => $this->binPath($installedVersion) . ':' . (getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin'),
+        ])->timeout(300)->run('npm install -g ' . escapeshellarg('npm@' . $npmVersion))->throw();
     }
 
     public function activeVersion(?string $preferredVersion): ?string

@@ -113,19 +113,36 @@
                 $ldev = $versionChecks['ldev'] ?? null;
                 $ldevRepository = config('ldev.github_repository');
             @endphp
-            <div class="flex items-center justify-between gap-4 py-1.5">
-                <span class="text-gray-500 dark:text-gray-400">Linux Dev {{ config('ldev.version') }} ({{ ucfirst(config('ldev.platform')) }})</span>
-                @if(!$ldevRepository)
-                    <span class="text-gray-400 dark:text-gray-500">Update check not configured</span>
-                @elseif(\App\Services\VersionChecker::ldevUpdateAvailable($ldev))
-                    <span class="text-right text-yellow-700 dark:text-yellow-400">
-                        {{ $ldev['latest'] }} available &mdash; <span class="font-mono">git pull</span> then <span class="font-mono">sudo ./deploy-app.sh</span>
-                        <a href="{{ $ldev['url'] }}" target="_blank" rel="noopener" class="ml-1 underline">Release notes</a>
-                    </span>
-                @elseif($ldev)
-                    <span class="text-green-600 dark:text-green-400">Up to date &mdash; latest release is {{ $ldev['latest'] }}</span>
-                @else
-                    <span class="text-gray-400 dark:text-gray-500">No release found yet on <a href="https://github.com/{{ $ldevRepository }}/releases" target="_blank" rel="noopener" class="underline">GitHub</a></span>
+            <div class="py-1.5" x-data="{ open: {{ request()->boolean('update') ? 'true' : 'false' }}, copied: false }">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-gray-500 dark:text-gray-400">Linux Dev {{ config('ldev.version') }} ({{ ucfirst(config('ldev.platform')) }})</span>
+                    @if(!$ldevRepository)
+                        <span class="text-gray-400 dark:text-gray-500">Update check not configured</span>
+                    @elseif(\App\Services\VersionChecker::ldevUpdateAvailable($ldev))
+                        <span class="flex flex-wrap items-center justify-end gap-2 text-yellow-700 dark:text-yellow-400">
+                            {{ $ldev['latest'] }} available
+                            <a href="{{ $ldev['url'] }}" target="_blank" rel="noopener" class="underline">Release notes</a>
+                            <flux:button size="sm" variant="primary" icon="arrow-up-circle" x-on:click="open = !open">Update</flux:button>
+                        </span>
+                    @elseif($ldev)
+                        <span class="text-green-600 dark:text-green-400">Up to date &mdash; latest release is {{ $ldev['latest'] }}</span>
+                    @else
+                        <span class="text-gray-400 dark:text-gray-500">No release found yet on <a href="https://github.com/{{ $ldevRepository }}/releases" target="_blank" rel="noopener" class="underline">GitHub</a></span>
+                    @endif
+                </div>
+                @if($ldevRepository && \App\Services\VersionChecker::ldevUpdateAvailable($ldev))
+                    <div x-show="open" x-cloak class="mt-2 p-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 space-y-2">
+                        <p class="text-xs text-gray-600 dark:text-gray-300">Updating needs your password for <span class="font-mono">sudo</span>, so run this in a terminal. Your sites, settings and tokens are kept, and the dashboard restarts on the new version when it finishes.</p>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <pre x-ref="cmd" class="flex-1 min-w-0 overflow-x-auto px-3 py-2 rounded bg-gray-900 text-gray-100 text-xs">{{ \App\Services\VersionChecker::ldevUpdateCommand() }}</pre>
+                            <flux:button size="sm" variant="filled" color="blue" icon="clipboard-document" x-on:click="navigator.clipboard.writeText($refs.cmd.innerText).then(() => { copied = true; setTimeout(() => copied = false, 2000) })">
+                                <span x-text="copied ? 'Copied' : 'Copy'">Copy</span>
+                            </flux:button>
+                        </div>
+                        @if(! config('ldev.source_path'))
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Replace the folder with wherever you cloned Linux Dev. It's filled in automatically after your next <span class="font-mono">deploy-app.sh</span>.</p>
+                        @endif
+                    </div>
                 @endif
             </div>
 
@@ -151,6 +168,36 @@
                         <span class="text-green-600 dark:text-green-400">Up to date — latest LTS is {{ $node['latestLtsVersion'] }}</span>
                     @endif
                 </div>
+            @endif
+
+            @php $npm = $versionChecks['npm'] ?? null; @endphp
+            @if($npm)
+                @foreach($npm['nodes'] as $nodeNpm)
+                    <div class="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                        <span class="text-gray-500 dark:text-gray-400">npm (Node {{ $nodeNpm['node'] }})</span>
+                        @if(! $nodeNpm['npm'])
+                            <span class="text-gray-400 dark:text-gray-500">npm not found</span>
+                        @elseif($nodeNpm['compatible'] && version_compare($npm['latest'], $nodeNpm['npm'], '>'))
+                            <span class="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                                {{ $nodeNpm['npm'] }} installed &mdash; {{ $npm['latest'] }} available
+                                <flux:button size="sm" variant="filled" color="blue" icon="arrow-up-circle" wire:click="upgradeNpm('{{ $nodeNpm['node'] }}')" wire:loading.attr="disabled" wire:target="upgradeNpm">
+                                    Upgrade npm
+                                </flux:button>
+                            </span>
+                        @elseif(! $nodeNpm['compatible'] && version_compare($npm['latest'], $nodeNpm['npm'], '>'))
+                            <span class="text-gray-500 dark:text-gray-400">{{ $nodeNpm['npm'] }} &mdash; npm {{ $npm['latest'] }} needs Node {{ $npm['engines'] }}</span>
+                        @else
+                            <span class="text-green-600 dark:text-green-400">Up to date &mdash; {{ $nodeNpm['npm'] }}</span>
+                        @endif
+                    </div>
+                @endforeach
+                <p class="text-xs text-gray-400 dark:text-gray-500 py-1.5" wire:loading wire:target="upgradeNpm">Upgrading npm&hellip;</p>
+                @if($npmUpgradeNote)
+                    <p class="text-xs text-green-600 dark:text-green-400 py-1.5">{{ $npmUpgradeNote }}</p>
+                @endif
+                @if($npmUpgradeError)
+                    <p class="text-xs text-red-600 dark:text-red-400 py-1.5">{{ $npmUpgradeError }}</p>
+                @endif
             @endif
 
             @foreach(['laravel' => 'Laravel', 'livewire' => 'Livewire', 'flux' => 'Flux'] as $key => $label)
@@ -238,13 +285,13 @@
 
         <div>
             <p class="text-sm font-medium mb-1">
-                MinIO console —
-                <a href="http://127.0.0.1:9001" target="_blank" class="text-blue-500">http://127.0.0.1:9001</a>
+                S3 storage (RustFS) console —
+                <a href="{{ config('ldev.s3.console') }}" target="_blank" class="text-blue-500">{{ config('ldev.s3.console') }}</a>
             </p>
             <div class="divide-y divide-gray-100 dark:divide-gray-700">
-                {!! $credRow('Username', $minioAccessKey) !!}
-                {!! $credRow('Password', $minioSecretKey) !!}
-                {!! $credRow('Bucket data on disk', $minioDataDir) !!}
+                {!! $credRow('Username', $s3AccessKey) !!}
+                {!! $credRow('Password', $s3SecretKey) !!}
+                {!! $credRow('Bucket data on disk', $s3DataDir) !!}
             </div>
         </div>
 

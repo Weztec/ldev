@@ -60,6 +60,26 @@
 
     <x-site-tabs :site="$site" active="detail" />
 
+    @if(! $hasManifest)
+        <div class="flex flex-wrap items-center justify-between gap-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
+            <div class="text-sm text-blue-900 dark:text-blue-200">
+                <p class="font-medium">This project has no <span class="font-mono">ldev.json</span> yet.</p>
+                <p class="text-blue-800 dark:text-blue-300">Create one from this site's current settings and commit it, so everyone who clones the project gets the same PHP and Node versions, database, workers and jobs automatically. It never contains passwords or <span class="font-mono">.env</span> values.</p>
+                @if($manifestError)
+                    <p class="text-red-600 dark:text-red-400 mt-1">{{ $manifestError }}</p>
+                @endif
+            </div>
+            <flux:button size="sm" variant="primary" icon="document-plus" wire:click="createManifest" wire:loading.attr="disabled" wire:target="createManifest">
+                Create ldev.json
+            </flux:button>
+        </div>
+    @elseif($manifestCreated)
+        <div class="p-4 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 text-sm text-green-800 dark:text-green-300">
+            Created <span class="font-mono">ldev.json</span> in the project root. Commit it to share the setup. You can review or update it under
+            <a href="{{ route('site-settings', $site) }}" wire:navigate class="underline">Project settings</a>.
+        </div>
+    @endif
+
     @if($pendingDeleteMode)
         <div class="max-w-lg p-4 rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 space-y-3">
             @if($pendingDeleteMode === 'disk')
@@ -111,7 +131,10 @@
         <div class="flex gap-2 flex-wrap">
             <a href="http://127.0.0.1:8025" target="_blank"><flux:button size="sm" variant="filled" color="blue" icon="envelope">Mailpit</flux:button></a>
             @if($usesS3)
-                <a href="http://127.0.0.1:9001" target="_blank"><flux:button size="sm" variant="filled" color="blue" icon="cube">MinIO console</flux:button></a>
+                <a href="{{ config('ldev.s3.console') }}" target="_blank"><flux:button size="sm" variant="filled" color="blue" icon="cube">S3 console</flux:button></a>
+            @endif
+            @if($site->usesMeilisearch())
+                <a href="{{ config('ldev.meilisearch_url') }}" target="_blank"><flux:button size="sm" variant="filled" color="blue" icon="magnifying-glass">Meilisearch</flux:button></a>
             @endif
             @if($adminerUrl)
                 <a href="{{ $adminerUrl }}" target="_blank"><flux:button size="sm" variant="filled" color="blue" icon="circle-stack">Adminer ({{ $dbLabel }})</flux:button></a>
@@ -786,6 +809,51 @@
             </div>
         @endif
         </div>
+        @endif
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+        <div class="flex flex-wrap justify-between items-center gap-2">
+            <h2 class="font-medium">Dumps</h2>
+            <div class="flex gap-2">
+                @if($dumps)
+                    <flux:button size="sm" variant="danger" icon="trash" wire:click="clearDumps">Clear</flux:button>
+                @endif
+                <flux:button size="sm" variant="filled" color="blue" icon="{{ $dumpsEnabled ? 'stop' : 'bug-ant' }}" wire:click="toggleDumps" wire:loading.attr="disabled" wire:target="toggleDumps">
+                    {{ $dumpsEnabled ? 'Stop sending dumps here' : 'Send dump() and dd() here' }}
+                </flux:button>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+            Shows this project's <span class="font-mono">dump()</span> and <span class="font-mono">dd()</span> output here instead of in the page, so JSON responses, Livewire requests, queued jobs and artisan commands can be debugged too. Switching on adds <span class="font-mono">VAR_DUMPER_FORMAT</span> and <span class="font-mono">VAR_DUMPER_SERVER</span> to the project's <span class="font-mono">.env</span>; switching off removes them. <span class="font-mono">dd()</span> still stops the request, so that page stays blank.
+        </p>
+
+        @if($dumpsEnabled && ! $dumpServerRunning)
+            <p class="text-xs text-yellow-700 dark:text-yellow-400">The dump collector isn't running, so dumps appear in the page as usual. Run <span class="font-mono">sudo ./deploy-app.sh</span> once to install it.</p>
+        @endif
+
+        @if($dumps)
+            <div class="space-y-2">
+                @foreach($dumps as $dump)
+                    <div class="rounded border border-gray-200 dark:border-gray-700" wire:key="dump-{{ $dump['time'] }}-{{ $loop->index }}">
+                        <div class="flex flex-wrap gap-x-3 gap-y-0.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                            <span>{{ \Illuminate\Support\Carbon::createFromTimestamp((int) $dump['time'])->setTimezone(config('ldev.timezone'))->format('H:i:s') }}</span>
+                            @if($dump['label'])
+                                <span class="font-medium text-gray-700 dark:text-gray-200">{{ $dump['label'] }}</span>
+                            @endif
+                            <span class="font-mono">{{ $dump['file'] }}{{ $dump['line'] ? ':' . $dump['line'] : '' }}</span>
+                            @if($dump['request'])
+                                <span class="font-mono truncate">{{ $dump['request'] }}</span>
+                            @elseif($dump['command'])
+                                <span class="font-mono truncate">{{ $dump['command'] }}</span>
+                            @endif
+                        </div>
+                        <pre class="px-3 py-2 text-xs font-mono overflow-x-auto max-h-80 text-gray-800 dark:text-gray-200">{{ $dump['text'] }}</pre>
+                    </div>
+                @endforeach
+            </div>
+        @elseif($dumpsEnabled)
+            <p class="text-sm text-gray-400 dark:text-gray-500">Waiting for dumps. Call <span class="font-mono">dump()</span> anywhere in the project and it appears here.</p>
         @endif
     </div>
 

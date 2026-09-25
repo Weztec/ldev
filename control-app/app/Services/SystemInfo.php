@@ -34,7 +34,7 @@ class SystemInfo
     {
         $paths = [
             'Sites' => config('ldev.sites_path'),
-            'Storage' => dirname(config('ldev.minio_data_dir')),
+            'Storage' => dirname(config('ldev.s3_data_dir')),
         ];
 
         $disks = [];

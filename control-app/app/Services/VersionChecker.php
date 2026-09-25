@@ -116,9 +116,57 @@ class VersionChecker
         ];
     }
 
+    public static function ldevUpdateCommand(): string
+    {
+        $path = config('ldev.source_path');
+        if (!$path) {
+            return 'cd <your Linux Dev folder> && git pull && sudo ./install.sh';
+        }
+
+        $cd = preg_match('#^[A-Za-z0-9_./-]+$#', $path) ? $path : escapeshellarg($path);
+
+        return "cd {$cd} && git pull && sudo ./install.sh";
+    }
+
     public static function ldevUpdateAvailable(?array $check): bool
     {
         return $check !== null && version_compare($check['latest'] ?? '0', config('ldev.version'), '>');
+    }
+
+    public function checkNpm(): ?array
+    {
+        try {
+            $latest = Http::timeout(10)->get('https://registry.npmjs.org/npm/latest')->throw()->json();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $version = (string) ($latest['version'] ?? '');
+        if (!preg_match('/^\d+\.\d+\.\d+$/', $version)) {
+            return null;
+        }
+        $engines = (string) ($latest['engines']['node'] ?? '*');
+
+        $manager = new NodeVersionManager;
+        $nodes = [];
+        foreach ($manager->installedVersions() as $node) {
+            try {
+                $compatible = \Composer\Semver\Semver::satisfies($node, $engines);
+            } catch (\Throwable $e) {
+                $compatible = false;
+            }
+            $nodes[] = ['node' => $node, 'npm' => $manager->npmVersion($node), 'compatible' => $compatible];
+        }
+
+        return ['latest' => $version, 'engines' => $engines, 'nodes' => $nodes];
+    }
+
+    public static function npmUpgradable(?array $check): array
+    {
+        return collect($check['nodes'] ?? [])
+            ->filter(fn ($n) => $n['compatible'] && $n['npm'] && version_compare($check['latest'], $n['npm'], '>'))
+            ->values()
+            ->all();
     }
 
     public function checkPackagist(string $vendor, string $package, string $currentConstraint): ?array

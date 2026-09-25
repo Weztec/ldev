@@ -79,6 +79,12 @@
 
             <div class="border-t dark:border-gray-700 py-1">
                 <x-nav-link route="help" icon="question-mark-circle" label="Help" :active="request()->routeIs('help')" />
+                @php($ldevCheck = json_decode((string) \App\Models\Setting::get('version_check_ldev'), true))
+                @php($ldevNewVersion = \App\Services\VersionChecker::ldevUpdateAvailable($ldevCheck) ? $ldevCheck['latest'] : null)
+                <a href="{{ route('settings', $ldevNewVersion ? ['update' => 1] : []) }}" wire:navigate x-show="!collapsed" x-cloak
+                    class="block px-4 pt-1 pb-2 text-xs {{ $ldevNewVersion ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500' }} hover:underline">
+                    Linux Dev {{ config('ldev.version') }}@if($ldevNewVersion) &middot; Update available: {{ $ldevNewVersion }}@endif
+                </a>
             </div>
         </aside>
         <main class="flex-1 overflow-y-auto p-6">
