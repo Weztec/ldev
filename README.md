@@ -74,8 +74,25 @@ Ubuntu. Inside this project the distro-neutral name `ldev` is used for paths, se
 
 ## Installing
 
+Get Linux Dev with git (recommended, since updating is then a `git pull`):
+
+```
+git clone https://github.com/Weztec/ldev.git ~/ldev
+cd ~/ldev
+```
+
+Or download the latest release's zip from https://github.com/Weztec/ldev/releases, extract it, and
+open a terminal in the extracted folder. Then install:
+
 ```
 sudo ./install.sh
+```
+
+The scripts are already executable. If you get `Permission denied`, the tool you extracted the zip
+with dropped that flag; restore it from inside the folder, then run the install again:
+
+```
+chmod +x *.sh
 ```
 
 This runs `setup-environment.sh` (installs and configures every OS-level service listed above —
@@ -110,7 +127,9 @@ git pull
 sudo ./install.sh
 ```
 
-`install.sh` re-runs both setup scripts, which are safe to run again. Your sites, settings and
+If you installed from a downloaded zip rather than `git clone`, **Download** in Settings → Updates
+fetches the new release, and **Update** gives a command that unpacks it over your folder and runs
+`install.sh`. `install.sh` re-runs both setup scripts, which are safe to run again. Your sites, settings and
 tokens are kept, and `deploy-app.sh` backs up the dashboard's database before it touches anything.
 
 ## First steps

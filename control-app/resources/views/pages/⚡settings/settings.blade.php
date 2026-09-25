@@ -122,6 +122,9 @@
                         <span class="flex flex-wrap items-center justify-end gap-2 text-yellow-700 dark:text-yellow-400">
                             {{ $ldev['latest'] }} available
                             <a href="{{ $ldev['url'] }}" target="_blank" rel="noopener" class="underline">Release notes</a>
+                            @if($ldevArchive = \App\Services\VersionChecker::ldevArchiveUrl($ldev, 'zip'))
+                                <a href="{{ $ldevArchive }}"><flux:button size="sm" variant="filled" color="blue" icon="arrow-down-tray">Download {{ $ldev['latest'] }}</flux:button></a>
+                            @endif
                             <flux:button size="sm" variant="primary" icon="arrow-up-circle" x-on:click="open = !open">Update</flux:button>
                         </span>
                     @elseif($ldev)
@@ -133,7 +136,7 @@
                 @if($ldevRepository && \App\Services\VersionChecker::ldevUpdateAvailable($ldev))
                     <div x-show="open" x-cloak class="mt-2 p-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 space-y-2">
                         <p class="text-xs text-gray-600 dark:text-gray-300">Updating needs your password for <span class="font-mono">sudo</span>, so run this in a terminal. Your sites, settings and tokens are kept, and the dashboard restarts on the new version when it finishes.</p>
-                        <x-copy-command :text="\App\Services\VersionChecker::ldevUpdateCommand()" />
+                        <x-copy-command :text="\App\Services\VersionChecker::ldevUpdateCommand($ldev)" />
                         @if(! config('ldev.source_path'))
                             <p class="text-xs text-gray-500 dark:text-gray-400">Replace the folder with wherever you cloned Linux Dev. It's filled in automatically after your next <span class="font-mono">deploy-app.sh</span>.</p>
                         @endif

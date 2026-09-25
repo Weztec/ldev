@@ -100,7 +100,7 @@ class VersionChecker
                 if (!preg_match('/^' . $platform . '-v(\d+\.\d+\.\d+)$/', (string) ($r['tag_name'] ?? ''), $m)) {
                     return null;
                 }
-                return ['latest' => $m[1], 'url' => $r['html_url'] ?? null];
+                return ['latest' => $m[1], 'url' => $r['html_url'] ?? null, 'tag' => $r['tag_name']];
             })
             ->filter()
             ->sort(fn ($a, $b) => version_compare($b['latest'], $a['latest']))
@@ -113,10 +113,26 @@ class VersionChecker
         return [
             'latest' => $best['latest'],
             'url' => $best['url'] ?? "https://github.com/{$repository}/releases",
+            'tag' => $best['tag'],
         ];
     }
 
-    public static function ldevUpdateCommand(): string
+    public static function ldevArchiveUrl(?array $check, string $extension = 'tar.gz'): ?string
+    {
+        $repository = (string) config('ldev.github_repository');
+        if (!$check || !preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repository)) {
+            return null;
+        }
+
+        $tag = $check['tag'] ?? (config('ldev.platform') . '-v' . ($check['latest'] ?? ''));
+        if (!preg_match('/^[a-z0-9]+-v\d+\.\d+\.\d+$/', $tag)) {
+            return null;
+        }
+
+        return "https://github.com/{$repository}/archive/refs/tags/{$tag}.{$extension}";
+    }
+
+    public static function ldevUpdateCommand(?array $check = null): string
     {
         $path = config('ldev.source_path');
         if (!$path) {
@@ -124,8 +140,13 @@ class VersionChecker
         }
 
         $cd = preg_match('#^[A-Za-z0-9_./-]+$#', $path) ? $path : escapeshellarg($path);
+        $archive = self::ldevArchiveUrl($check);
 
-        return "cd {$cd} && git pull && sudo ./install.sh";
+        if (is_dir($path . '/.git') || !$archive) {
+            return "cd {$cd} && git pull && sudo ./install.sh";
+        }
+
+        return "cd {$cd} && curl -fsSL {$archive} | tar xz --strip-components=1 && sudo ./install.sh";
     }
 
     public static function ldevUpdateAvailable(?array $check): bool
