@@ -90,8 +90,10 @@ git clone https://github.com/Weztec/ldev.git ~/ldev
 cd ~/ldev
 ```
 
-Or download the latest release's zip from https://github.com/Weztec/ldev/releases, extract it, and
-open a terminal in the extracted folder. Then install:
+Or download the latest release, Linux Dev 1.2.0 (Fedora), as a zip from
+https://github.com/Weztec/ldev/archive/refs/tags/fedora-v1.2.0.zip (release notes:
+https://github.com/Weztec/ldev/releases/tag/fedora-v1.2.0), extract it, and open a terminal in the
+extracted folder. Then install:
 
 ```
 sudo ./install.sh
