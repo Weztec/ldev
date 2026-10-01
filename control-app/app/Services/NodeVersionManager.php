@@ -89,7 +89,7 @@ class NodeVersionManager
 
     public function writeLockfile(string $projectPath, string $version): void
     {
-        Process::path($projectPath)->env($this->npmEnv($version))->timeout(300)->run('npm install --package-lock-only')->throw();
+        Process::path($projectPath)->env($this->npmEnv($version))->timeout(300)->run('npm install --package-lock-only --allow-remote=all')->throw();
     }
 
     protected function npmEnv(string $version): array

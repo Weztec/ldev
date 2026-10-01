@@ -27,3 +27,15 @@ Route::get('/sites/{site}/backups/{filename}/download', function (Site $site, st
         config('ldev.backups_dir') . '/' . $site->name . '/' . basename($filename)
     );
 })->name('backup-download');
+
+Route::get('/sites/{site}/progress', function (Site $site) {
+    $pick = fn (?array $status) => ($status['state'] ?? null) === 'running'
+        ? ['running' => true] + ($status['progress'] ?? [])
+        : ['running' => false, 'state' => $status['state'] ?? null];
+
+    return response()->json([
+        'check' => $pick(\App\Services\DependencyHealthChecker::checkStatus($site)),
+        'sandbox' => $pick(\App\Services\DependencySandbox::status($site)),
+        'tests' => $pick(\App\Services\TestRunner::status($site)),
+    ])->header('Cache-Control', 'no-store');
+})->name('site-progress');

@@ -58,9 +58,10 @@ new class extends Component {
     public $fpmStats = null;
 
     public $dependencies = null;
-    public $selectedPackages = ['security' => [], 'npm-security' => [], 'composer' => [], 'npm' => []];
+    public $selectedPackages = ['security' => [], 'npm-security' => [], 'composer' => [], 'npm' => [], 'composer-major' => [], 'npm-major' => []];
     public $dependencyUpdateResult = null;
     public $sandbox = null;
+    public $depsCheck = null;
     public $openSections = ['dependencies' => false, 'tests' => false];
 
     public $testSuite = null;
@@ -119,6 +120,7 @@ new class extends Component {
         $this->refreshResourceUsage();
         $this->refreshBackgroundProcesses();
         $this->dependencies = DependencyHealthChecker::cached($this->site);
+        $this->depsCheck = DependencyHealthChecker::checkStatus($this->site);
         $this->sandbox = DependencySandbox::status($this->site);
         $this->loadTestSuite();
 
@@ -162,6 +164,16 @@ new class extends Component {
         $this->refreshBackgroundProcesses();
         $this->refreshProjectLog();
         $this->refreshDumps();
+        $this->refreshJobs();
+    }
+
+    public function refreshJobs()
+    {
+        $wasChecking = ($this->depsCheck['state'] ?? null) === 'running';
+        $this->depsCheck = DependencyHealthChecker::checkStatus($this->site);
+        if ($wasChecking && ($this->depsCheck['state'] ?? null) !== 'running') {
+            $this->dependencies = DependencyHealthChecker::cached($this->site);
+        }
         $this->sandbox = DependencySandbox::status($this->site);
         $this->testRun = TestRunner::status($this->site);
         if (($this->testRun['finishedAt'] ?? null) !== (end($this->testHistory)['finishedAt'] ?? null)) {
@@ -368,7 +380,8 @@ new class extends Component {
     public function checkDependencies()
     {
         $this->openSections['dependencies'] = true;
-        $this->dependencies = (new DependencyHealthChecker)->check($this->site);
+        DependencyHealthChecker::launch($this->site);
+        $this->depsCheck = DependencyHealthChecker::checkStatus($this->site);
     }
 
     public function testDependencyUpdate(string $section, bool $all = false, bool $major = false)
@@ -380,17 +393,29 @@ new class extends Component {
 
         $known = DependencyHealthChecker::updatablePackages(DependencyHealthChecker::cached($this->site), $section);
         $major = $major && in_array($section, ['composer', 'npm'], true);
-        $packages = $all ? [] : array_values(array_intersect($known, (array) ($this->selectedPackages[$section] ?? [])));
+        $selectionKey = $major ? $section . '-major' : $section;
+        $packages = $all ? [] : array_values(array_intersect($known, (array) ($this->selectedPackages[$selectionKey] ?? [])));
+
+        if (in_array($section, ['composer', 'npm'], true)) {
+            $manager = DependencyHealthChecker::manager($section);
+            $fits = fn ($row) => $major ? DependencyHealthChecker::outsideRange($row, $manager) : DependencyHealthChecker::inRange($row, $manager);
+            $rows = collect(DependencyHealthChecker::cached($this->site)[$section === 'npm' ? 'npmOutdated' : 'composerOutdated'] ?? []);
+            $packages = array_values(array_intersect($packages, $rows->filter($fits)->pluck('name')->all()));
+            if ($all && $section === 'npm' && !$major && !$rows->contains($fits)) {
+                $this->dependencyUpdateResult = ['ok' => false, 'output' => 'None of the outdated npm packages can move within your package.json ranges. Use the major upgrade buttons instead.'];
+                return;
+            }
+        }
 
         if (!$all && !$packages) {
-            $this->dependencyUpdateResult = ['ok' => false, 'output' => 'No packages selected.'];
+            $this->dependencyUpdateResult = ['ok' => false, 'output' => 'No packages ticked in this list.'];
             return;
         }
 
         $this->dependencyUpdateResult = null;
         (new DependencySandbox)->discard($this->site);
         (new DependencySandbox)->launch($this->site, $section, $packages, $all, $major);
-        $this->selectedPackages = ['security' => [], 'npm-security' => [], 'composer' => [], 'npm' => []];
+        $this->selectedPackages = ['security' => [], 'npm-security' => [], 'composer' => [], 'npm' => [], 'composer-major' => [], 'npm-major' => []];
         $this->sandbox = DependencySandbox::status($this->site);
     }
 
@@ -399,7 +424,17 @@ new class extends Component {
         $this->dependencyUpdateResult = (new DependencySandbox)->apply($this->site);
         $this->sandbox = DependencySandbox::status($this->site);
         if ($this->dependencyUpdateResult['ok']) {
-            $this->dependencies = (new DependencyHealthChecker)->check($this->site);
+            DependencyHealthChecker::launch($this->site);
+            $this->depsCheck = DependencyHealthChecker::checkStatus($this->site);
+        }
+    }
+
+    public function undoDependencyUpdate()
+    {
+        $this->dependencyUpdateResult = (new DependencySandbox)->undo($this->site);
+        if ($this->dependencyUpdateResult['ok']) {
+            DependencyHealthChecker::launch($this->site);
+            $this->depsCheck = DependencyHealthChecker::checkStatus($this->site);
         }
     }
 

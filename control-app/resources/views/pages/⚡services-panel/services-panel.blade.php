@@ -10,7 +10,7 @@
         };
         $human = fn ($bytes) => \App\Services\SystemInfo::humanBytes($bytes);
         $uptime = $system['uptime'] ?? null;
-        $uptimeLabel = $uptime === null ? 'unknown' : (intdiv($uptime, 86400) > 0 ? intdiv($uptime, 86400) . 'd ' : '') . intdiv($uptime % 86400, 3600) . 'h ' . intdiv($uptime % 3600, 60) . 'm';
+        $uptimeLabel = $uptime === null ? 'unknown' : (intdiv($uptime, 86400) > 0 ? intdiv($uptime, 86400) . ' ' . \Illuminate\Support\Str::plural('day', intdiv($uptime, 86400)) . ' ' : '') . intdiv($uptime % 86400, 3600) . ' h ' . intdiv($uptime % 3600, 60) . ' min';
         $memory = $system['memory'] ?? null;
         $load = $system['load'] ?? [];
         $cpus = $system['cpus'] ?? null;

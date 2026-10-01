@@ -371,6 +371,103 @@
         @endif
     </div>
 
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" wire:init="loadSandboxes">
+        @php
+            $sandboxRows = collect($sandboxes ?? []);
+            $humanBytes = fn ($b) => $b === null ? '?' : ($b >= 1073741824 ? round($b / 1073741824, 1) . ' GB' : ($b >= 1048576 ? round($b / 1048576) . ' MB' : max(1, round($b / 1024)) . ' KB'));
+            $stateLabels = [
+                'running' => ['testing now', 'text-blue-600 dark:text-blue-400'],
+                'ready' => ['ready to apply', 'text-green-600 dark:text-green-400'],
+                'problems' => ['problems found', 'text-yellow-700 dark:text-yellow-400'],
+                'interrupted' => ['interrupted', 'text-red-600 dark:text-red-400'],
+                'leftover' => ['leftover copy', 'text-gray-500 dark:text-gray-400'],
+                'undo' => ['undo backup', 'text-gray-500 dark:text-gray-400'],
+                'orphan' => ['no longer used', 'text-gray-500 dark:text-gray-400'],
+            ];
+        @endphp
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="font-medium">
+                Dependency sandboxes
+                @if($sandboxes !== null)
+                    <span class="text-sm font-normal text-gray-500 dark:text-gray-400">&mdash; {{ $sandboxRows->count() }} using {{ $humanBytes($sandboxRows->sum('bytes')) }}</span>
+                @endif
+            </h2>
+            <div class="flex flex-wrap gap-2">
+                <flux:button size="sm" variant="filled" color="blue" icon="arrow-path" wire:click="loadSandboxes">Refresh</flux:button>
+                @if($sandboxRows->where('state', '!=', 'running')->count())
+                    <flux:button size="sm" variant="danger" icon="trash" wire:click="deleteAllSandboxes"
+                        wire:confirm="Delete every sandbox that is not running a test? Updates that were tested but not applied will need testing again.">Delete all not running</flux:button>
+                @endif
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+            Copies of projects used to test dependency updates before they are applied, in
+            <span class="font-mono">{{ config('ldev.dependency_sandbox_dir') }}</span>. Each project has at most one, replaced by every new test.
+            Sizes are the real extra disk space: on btrfs the copy shares unchanged files with the project.
+        </p>
+        <div class="flex items-center gap-3 text-sm">
+            <label for="sandbox-prune-days" class="text-gray-500 dark:text-gray-400">Delete unapplied sandboxes after</label>
+            <select id="sandbox-prune-days" wire:model.live="sandboxPruneDays"
+                class="rounded px-2 py-1 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                <option value="1">1 day</option>
+                <option value="3">3 days</option>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+                <option value="0">Never</option>
+            </select>
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500">Checked once a day. Copies that belong to deleted projects, and copies left over from interrupted tests, are always removed. A running test is never touched.</p>
+
+        @if($sandboxes === null)
+            <p class="text-sm text-gray-500 dark:text-gray-400">Measuring&hellip;</p>
+        @elseif($sandboxRows->isEmpty())
+            <p class="text-sm text-gray-500 dark:text-gray-400">No sandboxes. Nothing is using disk space.</p>
+        @else
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                        <th class="py-1 pr-3 font-medium">Project</th>
+                        <th class="py-1 pr-3 font-medium">State</th>
+                        <th class="py-1 pr-3 font-medium">Tested</th>
+                        <th class="py-1 pr-3 font-medium">Age</th>
+                        <th class="py-1 pr-3 font-medium text-right">Disk</th>
+                        <th class="py-1"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    @foreach($sandboxRows as $row)
+                        <tr wire:key="sandbox-{{ $row['name'] }}">
+                            <td class="py-1.5 pr-3">
+                                @if($row['siteId'])
+                                    <a href="{{ route('site-detail', $row['siteId']) }}" wire:navigate class="hover:underline">{{ $row['site'] }}</a>
+                                @else
+                                    <span class="font-mono text-xs">{{ $row['name'] }}</span>
+                                @endif
+                                @if($row['kind'] !== 'sandbox')
+                                    <span class="text-xs text-gray-400 dark:text-gray-500">({{ $row['kind'] }})</span>
+                                @endif
+                            </td>
+                            <td class="py-1.5 pr-3 {{ $stateLabels[$row['state']][1] ?? '' }}">{{ $stateLabels[$row['state']][0] ?? $row['state'] }}</td>
+                            <td class="py-1.5 pr-3 text-xs text-gray-600 dark:text-gray-300">{{ $row['packages'] ?? '—' }}</td>
+                            <td class="py-1.5 pr-3 text-xs text-gray-500 dark:text-gray-400">{{ \Illuminate\Support\Carbon::createFromTimestamp($row['time'])->diffForHumans() }}</td>
+                            <td class="py-1.5 pr-3 text-right tabular-nums">{{ $humanBytes($row['bytes']) }}</td>
+                            <td class="py-1.5 text-right">
+                                @if($row['state'] !== 'running')
+                                    <flux:button size="xs" variant="danger" icon="trash" wire:click="deleteSandbox('{{ $row['name'] }}')"
+                                        wire:confirm="Delete this {{ $row['kind'] === 'undo' ? 'undo backup? The applied update can no longer be undone from the dashboard.' : 'sandbox? A tested update that was not applied will need testing again.' }}">Delete</flux:button>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endif
+        @if($sandboxNote)
+            <p class="text-sm text-gray-600 dark:text-gray-300">{{ $sandboxNote }}</p>
+        @endif
+    </div>
+
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
         <div class="flex items-center justify-between">
             <h2 class="font-medium">Dashboard backup</h2>

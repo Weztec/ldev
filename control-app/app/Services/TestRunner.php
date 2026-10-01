@@ -337,9 +337,11 @@ class TestRunner
         $root = $site->projectRoot();
         $found = self::discover($root);
 
-        $this->status['results'] = $this->runFiles($root, self::sitePhp($site), (string) $found['runner'], $selection, function (?string $current, array $results) use ($site) {
+        $index = 0;
+        $this->status['results'] = $this->runFiles($root, self::sitePhp($site), (string) $found['runner'], $selection, function (?string $current, array $results) use ($site, $selection, &$index) {
             $this->status['current'] = $current;
             $this->status['results'] = $results;
+            $this->status['progress'] = ['done' => $index++, 'total' => max(count($selection), 1), 'label' => (string) $current];
             Setting::set(self::statusKey($site), json_encode($this->status));
         }, TestEnvironment::overrides($site), $site, $coverage);
 

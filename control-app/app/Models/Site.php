@@ -23,6 +23,8 @@ class Site extends Model
             Setting::whereIn('key', [
                 \App\Services\DependencyHealthChecker::settingKey($site),
                 \App\Services\DependencySandbox::statusKey($site),
+                \App\Services\DependencySandbox::undoKey($site),
+                \App\Services\DependencyHealthChecker::checkKey($site),
                 \App\Services\TestRunner::statusKey($site),
                 \App\Services\TestRunner::historyKey($site),
                 \App\Services\TestEnvironment::settingKey($site),
@@ -33,8 +35,10 @@ class Site extends Model
             $sandbox = \App\Services\DependencySandbox::dir($site);
             File::deleteDirectory($sandbox);
             File::deleteDirectory($sandbox . '-baseline');
+            File::deleteDirectory(\App\Services\DependencySandbox::undoDir($site));
             File::delete([
                 config('ldev.dependency_sandbox_dir') . '/' . $site->name . '.log',
+                \App\Services\DependencyHealthChecker::checkLog($site),
                 config('ldev.test_runs_dir') . '/' . $site->name . '.log',
                 config('ldev.dumps_dir') . '/' . $site->name . '.jsonl',
             ]);

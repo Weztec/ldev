@@ -86,6 +86,11 @@ class LdevCheckVersions extends Command
             }
         }
 
+        $pruned = (new \App\Services\DependencySandbox)->prune();
+        if ($pruned) {
+            $this->info('Removed old dependency sandboxes: ' . implode(', ', $pruned));
+        }
+
         $this->notifyIfChanged();
 
         return 0;

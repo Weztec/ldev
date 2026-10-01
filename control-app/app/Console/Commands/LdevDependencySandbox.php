@@ -27,7 +27,7 @@ class LdevDependencySandbox extends Command
         $major = (bool) $this->option('major');
         $cached = DependencyHealthChecker::cached($site);
         $packages = match (true) {
-            $all && $major => array_values(array_filter($known, fn ($name) => DependencyHealthChecker::outdatedRow($cached, DependencyHealthChecker::manager($section), $name)['major'] ?? false)),
+            $all && $major => array_values(array_filter($known, fn ($name) => DependencyHealthChecker::outsideRange(DependencyHealthChecker::outdatedRow($cached, DependencyHealthChecker::manager($section), $name) ?? [], DependencyHealthChecker::manager($section)))),
             $all && $section === 'security' => $known,
             $all => [],
             default => array_values(array_intersect((array) $this->argument('packages'), $known)),

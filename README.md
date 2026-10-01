@@ -44,15 +44,24 @@ Ubuntu. Inside this project the distro-neutral name `ldev` is used for paths, se
   updates for the stack's own packages show as a dashboard banner, with a copyable
   `sudo dnf upgrade` command
 - Per-project dependency health: Composer and npm security advisories (`composer audit`,
-  `npm audit`) plus outdated packages. Pick packages (or a whole list) and the update is first
+  `npm audit`) plus outdated packages, each with an advisory note naming what blocks the new
+  version (and whether that package has a release that allows it yet) and what to do. Pick packages (or a whole list) and the update is first
   tried in a sandbox copy of the project, which checks that the app boots, routes load, views
   compile, the front end builds and the tests pass. Major-version upgrades can be tried the same
   way (the version constraint is raised in the copy only). The notes say whether a problem is new
-  or was already there, nothing changes in the project until you apply the tested versions, and a
-  desktop notification tells you when the test has finished
+  or was already there, nothing changes in the project until you apply the tested versions (only
+  possible after a clean pass, with an automatic rollback if the install fails and an Undo button), and a
+  desktop notification tells you when the test has finished. Outdated packages are split into updates
+  that fit your version ranges and those that need a major upgrade, each with its own buttons. Sandbox
+  copies share unchanged files with the project on btrfs, are listed with their disk use in Settings, and
+  unapplied ones are deleted automatically after 7 days (configurable)
+- Progress bars for dependency checks, sandbox tests and test runs (current step or file, percentage,
+  elapsed time), which poll a small status endpoint only while a job runs; any other slow button shows
+  a small timer panel
 - A per-project test runner for Pest, PHPUnit, Vitest and Jest that picks the right runner for
   each file: run everything, a suite, only last run's failures, or picked files and single tests;
-  see passed/failed/skipped results with failure messages and skip reasons; optionally measure code
+  see passed/failed/skipped results with failure messages and skip reasons (also shown per project in a
+  Checks column on the Sites list, next to outdated and blocked package counts); optionally measure code
   coverage; and keep a short run history that flags possibly flaky tests. Each developer can
   override test settings (database password, host, API keys) for their own machine without editing
   the project's `phpunit.xml`

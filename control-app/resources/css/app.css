@@ -2,3 +2,12 @@
 @import "../../vendor/livewire/flux/dist/flux.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+.ldev-indeterminate {
+    animation: ldev-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes ldev-indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+}

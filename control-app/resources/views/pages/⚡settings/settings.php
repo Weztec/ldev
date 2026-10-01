@@ -49,6 +49,10 @@ new class extends Component {
     public $dashboardBackupError = null;
     public $dashboardBackupNote = null;
 
+    public $sandboxes = null;
+    public $sandboxPruneDays = 7;
+    public $sandboxNote = null;
+
     protected array $knownVersions = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
 
     protected function latestKnownNodeVersion(): string
@@ -77,6 +81,8 @@ new class extends Component {
         $this->loadVersionChecks();
         $this->refreshDashboardBackups();
 
+        $this->sandboxPruneDays = \App\Services\DependencySandbox::pruneDays();
+
         $this->desktopNotifications = DesktopNotifier::enabled();
         $this->notificationTimeout = DesktopNotifier::timeoutSeconds();
     }
@@ -90,6 +96,40 @@ new class extends Component {
 
         $this->notificationTimeout = (int) $value;
         Setting::set('notification_timeout_seconds', (string) $this->notificationTimeout);
+    }
+
+    public function loadSandboxes()
+    {
+        $this->sandboxes = \App\Services\DependencySandbox::inventory();
+    }
+
+    public function deleteSandbox(string $name)
+    {
+        $result = (new \App\Services\DependencySandbox)->remove($name);
+        $this->sandboxNote = $result['output'];
+        $this->loadSandboxes();
+    }
+
+    public function deleteAllSandboxes()
+    {
+        $sandbox = new \App\Services\DependencySandbox;
+        $removed = collect(\App\Services\DependencySandbox::inventory(false))
+            ->reject(fn ($row) => $row['state'] === 'running')
+            ->filter(fn ($row) => $sandbox->remove($row['name'])['ok'])
+            ->count();
+        $this->sandboxNote = 'Deleted ' . $removed . ' ' . \Illuminate\Support\Str::plural('sandbox', $removed) . '. Running tests were left alone.';
+        $this->loadSandboxes();
+    }
+
+    public function updatedSandboxPruneDays($value)
+    {
+        if (!in_array((int) $value, \App\Services\DependencySandbox::PRUNE_DAYS, true)) {
+            $this->sandboxPruneDays = \App\Services\DependencySandbox::pruneDays();
+            return;
+        }
+
+        $this->sandboxPruneDays = (int) $value;
+        Setting::set('sandbox_prune_days', (string) $this->sandboxPruneDays);
     }
 
     public function updatedDesktopNotifications($value)

@@ -28,9 +28,10 @@
                     $th = 'px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider';
 @endphp
                 <tr>
-                    <th class="{{ $th }} w-1/6">Name</th>
-                    <th class="{{ $th }} w-1/5">URL</th>
-                    <th class="{{ $th }} w-1/6">Git</th>
+                    <th class="{{ $th }} w-1/8">Name</th>
+                    <th class="{{ $th }} w-1/6">URL</th>
+                    <th class="{{ $th }} w-1/7">Git</th>
+                    <th class="{{ $th }} w-1/4">Checks</th>
                     <th class="{{ $th }} w-24">Status</th>
                     <th class="{{ $th }}">Actions</th>
                 </tr>
@@ -42,29 +43,6 @@
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-600">
                     <td class="px-4 py-2 truncate">
                         <a href="{{ route('site-detail', $site) }}" wire:navigate class="font-medium hover:underline">{{ $site->name }}</a>
-                        <div class="flex flex-wrap gap-1 mt-0.5 text-xs">
-                            @if($siteHealth['vulnerable'] ?? 0)
-                                <span class="rounded px-1.5 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300" title="Packages with known security advisories (Composer and npm)">{{ $siteHealth['vulnerable'] }} vulnerable</span>
-                            @endif
-                            @if($siteHealth['failing'] ?? 0)
-                                <span class="rounded px-1.5 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300" title="Tests that failed in the last run">{{ $siteHealth['failing'] }} {{ \Illuminate\Support\Str::plural('test', $siteHealth['failing']) }} failing</span>
-                            @elseif($siteHealth['testsPassed'] ?? false)
-                                <span class="rounded px-1.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300" title="Every test passed in the last run">tests pass</span>
-                            @elseif($siteHealth['testsRunning'] ?? false)
-                                <span class="rounded px-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">tests running</span>
-                            @endif
-                            @if(($siteHealth['sandbox'] ?? null) === 'pass')
-                                <span class="rounded px-1.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300" title="A tested dependency update is waiting to be applied">update ready</span>
-                            @elseif(($siteHealth['sandbox'] ?? null) === 'issues')
-                                <span class="rounded px-1.5 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300" title="The last sandbox test of a dependency update found problems">update has problems</span>
-                            @endif
-                            @if($siteHealth['unmetRequirements'] ?? 0)
-                                <span class="rounded px-1.5 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300" title="Installed service versions don't match this project's ldev.json requires">requirements not met</span>
-                            @endif
-                            @if(($siteHealth['outdated'] ?? 0) && !($siteHealth['vulnerable'] ?? 0))
-                                <span class="rounded px-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" title="Outdated Composer and npm packages">{{ $siteHealth['outdated'] }} outdated</span>
-                            @endif
-                        </div>
                     </td>
                     <td class="px-4 py-2 truncate"><a href="https://{{ $site->domain }}" target="_blank" class="text-blue-500">{{ $site->domain }}</a></td>
                     <td class="px-4 py-2 truncate">
@@ -78,7 +56,7 @@
 
                             <div class="flex flex-wrap gap-x-2 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                 @if($git['dirty'])
-                                    <span title="Uncommitted local changes">● dirty</span>
+                                    <span class="font-medium text-red-600 dark:text-red-400" title="Uncommitted local changes">● dirty</span>
                                 @endif
                                 @if($git['ahead'] > 0)
                                     <span title="{{ $git['ahead'] }} commit(s) not yet pushed to origin">↑{{ $git['ahead'] }}</span>
@@ -93,6 +71,86 @@
                                 @endif
                             </div>
                         @endif
+                    </td>
+                    <td class="px-4 py-2 align-top">
+                        @php
+                            $badge = 'rounded px-1.5';
+                            $red = $badge . ' bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
+                            $green = $badge . ' bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
+                            $yellow = $badge . ' bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300';
+                            $blue = $badge . ' bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300';
+                            $grey = $badge . ' bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
+                            $hasTests = ($siteHealth['testsRunning'] ?? false) || ($siteHealth['passed'] ?? 0) || ($siteHealth['failing'] ?? 0) || ($siteHealth['skipped'] ?? 0);
+                            $hasPackages = ($siteHealth['checking'] ?? false) || ($siteHealth['outdated'] ?? 0);
+                        @endphp
+                        @if(!($siteHealth['vulnerable'] ?? 0) && !$hasTests && !$hasPackages && !in_array($siteHealth['sandbox'] ?? null, ['pass', 'issues', 'running'], true) && !($siteHealth['unmetRequirements'] ?? 0))
+                            <span class="text-xs text-gray-400 dark:text-gray-500">No results yet</span>
+                        @endif
+                        <table class="text-xs">
+                            @if($siteHealth['vulnerable'] ?? 0)
+                                <tr>
+                                    <th scope="row" class="pr-2 py-0.5 text-left align-top font-normal whitespace-nowrap text-gray-500 dark:text-gray-400">Security</th>
+                                    <td class="py-0.5"><div class="flex flex-wrap gap-1">
+                                    <span class="{{ $red }}" title="Packages with known security advisories:&#10;{{ $siteHealth['vulnerableTitle'] }}">{{ $siteHealth['vulnerable'] }} vulnerable</span>
+                                </div></td>
+                                </tr>
+                            @endif
+                            @if($hasTests)
+                                <tr>
+                                    <th scope="row" class="pr-2 py-0.5 text-left align-top font-normal whitespace-nowrap text-gray-500 dark:text-gray-400">Tests</th>
+                                    <td class="py-0.5"><div class="flex flex-wrap gap-1">
+                                    @if($siteHealth['testsRunning'] ?? false)
+                                        <span class="{{ $blue }}" title="Test file being run, out of the total">running{{ $siteHealth['testsProgress'] ? ' ' . $siteHealth['testsProgress'] : '' }}</span>
+                                    @else
+                                        <span class="{{ $green }}" title="Tests that passed in the last run">{{ $siteHealth['passed'] }} passed</span>
+                                        <span class="{{ $siteHealth['failing'] ? $red : $grey }}" title="Tests that failed in the last run">{{ $siteHealth['failing'] }} failed</span>
+                                        <span class="{{ $siteHealth['skipped'] ? $yellow : $grey }}" title="Tests that chose not to run in the last run. Not a failure.">{{ $siteHealth['skipped'] }} skipped</span>
+                                    @endif
+                                </div></td>
+                                </tr>
+                            @endif
+                            @if($hasPackages)
+                                <tr>
+                                    <th scope="row" class="pr-2 py-0.5 text-left align-top font-normal whitespace-nowrap text-gray-500 dark:text-gray-400">Outdated</th>
+                                    <td class="py-0.5"><div class="flex flex-wrap gap-1">
+                                    @if($siteHealth['checking'] ?? false)
+                                        <span class="{{ $blue }}">checking</span>
+                                    @endif
+                                    @if($siteHealth['outdatedComposer'] ?? 0)
+                                        <span class="{{ $grey }}" title="Outdated packages:&#10;{{ $siteHealth['outdatedTitle'] }}">{{ $siteHealth['outdatedComposer'] }} Composer</span>
+                                    @endif
+                                    @if($siteHealth['outdatedNpm'] ?? 0)
+                                        <span class="{{ $grey }}" title="Outdated packages:&#10;{{ $siteHealth['outdatedTitle'] }}">{{ $siteHealth['outdatedNpm'] }} npm</span>
+                                    @endif
+                                    @if($siteHealth['blocked'] ?? 0)
+                                        <span class="{{ $red }}" title="Updates that cannot be installed yet because another package does not support them. Open the project for the advisory notes.">{{ $siteHealth['blocked'] }} blocked</span>
+                                    @endif
+                                </div></td>
+                                </tr>
+                            @endif
+                            @if(in_array($siteHealth['sandbox'] ?? null, ['pass', 'issues', 'running'], true))
+                                <tr>
+                                    <th scope="row" class="pr-2 py-0.5 text-left align-top font-normal whitespace-nowrap text-gray-500 dark:text-gray-400">Update</th>
+                                    <td class="py-0.5"><div class="flex flex-wrap gap-1">
+                                    @if($siteHealth['sandbox'] === 'pass')
+                                        <span class="{{ $green }}" title="A tested dependency update is waiting to be applied">ready to apply</span>
+                                    @elseif($siteHealth['sandbox'] === 'issues')
+                                        <span class="{{ $yellow }}" title="The last sandbox test of a dependency update found problems">has problems</span>
+                                    @else
+                                        <span class="{{ $blue }}" title="A dependency update is being tested in the sandbox">testing</span>
+                                    @endif
+                                </div></td>
+                                </tr>
+                            @endif
+                            @if($siteHealth['unmetRequirements'] ?? 0)
+                                <tr>
+                                    <th scope="row" class="pr-2 py-0.5 text-left align-top font-normal whitespace-nowrap text-gray-500 dark:text-gray-400">Requirements</th>
+                                    <td class="py-0.5"><div class="flex flex-wrap gap-1">
+                                    <span class="{{ $yellow }}" title="Installed service versions don't match this project's ldev.json requires">not met</span>
+                                </div></td>
+                                </tr>
+                            @endif
+                        </table>
                     </td>
                     <td class="px-4 py-2">
                         @php $reachable = $site->isReachable();@endphp

@@ -26,7 +26,158 @@
                 window.Flux.appearance = stored;
             }
         });
+
+        (() => {
+            const pollers = {};
+            const subscribe = (url, listener) => {
+                const poller = pollers[url] ??= { listeners: new Set(), timer: null };
+                poller.listeners.add(listener);
+                const tick = async () => {
+                    try {
+                        const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            poller.listeners.forEach((l) => l(data));
+                        }
+                    } catch (e) {}
+                    poller.timer = poller.listeners.size ? setTimeout(tick, 1500) : null;
+                };
+                if (!poller.timer) {
+                    poller.timer = setTimeout(tick, 1500);
+                }
+                return () => poller.listeners.delete(listener);
+            };
+            const elapsed = (ms) => {
+                const secs = Math.max(0, Math.floor(ms / 1000));
+                const h = Math.floor(secs / 3600);
+                const m = Math.floor((secs % 3600) / 60);
+                return [h ? h + ' h' : '', h || m ? m + ' min' : '', (secs % 60) + ' s'].filter(Boolean).join(' ');
+            };
+            window.ldevElapsed = elapsed;
+
+            document.addEventListener('alpine:init', () => {
+                window.Alpine.data('ldevJobProgress', (url, job, unit, initial) => ({
+                    done: initial.done ?? 0,
+                    total: initial.total ?? 0,
+                    sub: initial.sub ?? null,
+                    label: initial.label || 'Starting',
+                    started: Date.parse(initial.startedAt) || Date.now(),
+                    now: Date.now(),
+                    finished: false,
+                    best: 0,
+                    init() {
+                        this.clock = setInterval(() => { this.now = Date.now(); }, 1000);
+                        this.stop = subscribe(url, (data) => {
+                            const state = data[job];
+                            if (!state || this.finished) {
+                                return;
+                            }
+                            if (!state.running) {
+                                this.finished = true;
+                                this.done = this.total;
+                                this.sub = null;
+                                clearInterval(this.clock);
+                                this.$wire.refreshJobs();
+                                return;
+                            }
+                            this.done = state.done ?? 0;
+                            this.total = state.total ?? 0;
+                            this.sub = state.sub ?? null;
+                            this.label = state.label || this.label;
+                        });
+                    },
+                    destroy() {
+                        clearInterval(this.clock);
+                        this.stop && this.stop();
+                    },
+                    get percent() {
+                        if (this.finished) {
+                            return 100;
+                        }
+                        const part = this.sub && this.sub[1] ? this.sub[0] / this.sub[1] : 0;
+                        const now = this.total ? Math.round((this.done + part) / this.total * 100) : 0;
+                        this.best = Math.min(99, Math.max(this.best, 3, now));
+                        return this.best;
+                    },
+                    get position() {
+                        if (!this.total) {
+                            return '';
+                        }
+                        let text = unit + ' ' + Math.min(this.done + 1, this.total) + ' of ' + this.total;
+                        if (this.sub && this.sub[1]) {
+                            text += ', file ' + Math.min(this.sub[0] + 1, this.sub[1]) + ' of ' + this.sub[1];
+                        }
+                        return text;
+                    },
+                    get time() {
+                        return elapsed(this.now - this.started);
+                    },
+                }));
+            });
+
+            document.addEventListener('livewire:init', () => {
+                const active = new Map();
+                let seq = 0;
+                let clock = null;
+                const render = () => {
+                    let box = document.getElementById('ldev-busy');
+                    if (!active.size) {
+                        box && box.remove();
+                        clearInterval(clock);
+                        clock = null;
+                        return;
+                    }
+                    if (!box) {
+                        box = document.createElement('div');
+                        box.id = 'ldev-busy';
+                        box.setAttribute('role', 'status');
+                        box.className = 'fixed bottom-4 right-4 z-50 w-72 max-w-[calc(100vw-2rem)] space-y-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 shadow-lg text-sm';
+                        document.body.appendChild(box);
+                    }
+                    box.replaceChildren(...[...active.values()].map((item) => {
+                        const row = document.createElement('div');
+                        row.className = 'space-y-1';
+                        const head = document.createElement('div');
+                        head.className = 'flex justify-between gap-2 text-gray-700 dark:text-gray-200';
+                        const name = document.createElement('span');
+                        name.className = 'truncate';
+                        name.textContent = item.text + '…';
+                        const time = document.createElement('span');
+                        time.className = 'shrink-0 tabular-nums text-gray-500 dark:text-gray-400';
+                        time.textContent = elapsed(Date.now() - item.started);
+                        head.append(name, time);
+                        const track = document.createElement('div');
+                        track.className = 'h-1.5 overflow-hidden rounded bg-gray-200 dark:bg-gray-700';
+                        const fill = document.createElement('div');
+                        fill.className = 'ldev-indeterminate h-full w-1/3 rounded bg-blue-500 dark:bg-blue-400';
+                        track.append(fill);
+                        row.append(head, track);
+                        return row;
+                    }));
+                    clock ??= setInterval(render, 1000);
+                };
+
+                window.Livewire.interceptAction(({ action, onFinish }) => {
+                    const el = action.origin?.el;
+                    if (!el || !el.getAttributeNames || el.getAttributeNames().some((n) => n.startsWith('wire:poll'))) {
+                        return;
+                    }
+                    const id = ++seq;
+                    const text = (el.dataset.busyLabel || el.innerText || el.value || el.title || 'Working').trim().replace(/\s+/g, ' ').slice(0, 60) || 'Working';
+                    const timer = setTimeout(() => {
+                        active.set(id, { text, started: Date.now() - 600 });
+                        render();
+                    }, 600);
+                    onFinish(() => {
+                        clearTimeout(timer);
+                        active.delete(id);
+                        render();
+                    });
+                });
+            });
+        })();
     </script>
+
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
     @php($updateSummary = new \App\Services\UpdateSummary)

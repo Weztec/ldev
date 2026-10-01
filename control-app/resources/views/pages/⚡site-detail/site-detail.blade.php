@@ -166,7 +166,7 @@
                 @if($gitStatus['dirty'] || ($gitStatus['hasUpstream'] && $gitStatus['outOfSync']))
                     <div class="text-sm text-yellow-800 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/30 rounded px-2 py-1.5 space-y-0.5">
                         <p class="font-medium">⚠ Out of step</p>
-                        @if($gitStatus['dirty'])<p>Uncommitted local changes.</p>@endif
+                        @if($gitStatus['dirty'])<p class="font-medium text-red-600 dark:text-red-400">● Dirty: uncommitted local changes.</p>@endif
                         @if($gitStatus['ahead'] > 0)<p>{{ $gitStatus['ahead'] }} commit(s) ahead of origin.</p>@endif
                         @if($gitStatus['behind'] > 0)<p>{{ $gitStatus['behind'] }} commit(s) behind origin.</p>@endif
                     </div>
@@ -266,8 +266,15 @@
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
         <div class="flex justify-between items-center">
             <button type="button" class="flex items-center gap-2 font-medium text-left" wire:click="toggleSection('dependencies')" aria-expanded="{{ $openSections['dependencies'] ? 'true' : 'false' }}"><span class="inline-flex transition-transform {{ $openSections['dependencies'] ? 'rotate-90' : '' }}"><flux:icon name="chevron-right" class="size-4" /></span>Dependencies</button>
-            <flux:button size="sm" variant="filled" color="blue" icon="arrow-path" wire:click="checkDependencies" wire:loading.attr="disabled" wire:target="checkDependencies">Check now</flux:button>
+            <flux:button size="sm" variant="filled" color="blue" icon="arrow-path" wire:click="checkDependencies" wire:loading.attr="disabled" wire:target="checkDependencies" :disabled="($depsCheck['state'] ?? null) === 'running'">Check now</flux:button>
         </div>
+        <x-job-progress :site="$site" job="check" :status="$depsCheck" />
+        <x-job-progress :site="$site" job="sandbox" :status="$sandbox" />
+        @if(($depsCheck['state'] ?? null) === 'failed')
+            <p class="text-xs text-red-600 dark:text-red-400">The last check failed: {{ $depsCheck['error'] ?? 'unknown error' }}</p>
+        @elseif(($depsCheck['state'] ?? null) === 'interrupted')
+            <p class="text-xs text-red-600 dark:text-red-400">The last check was interrupted. Click Check now to run it again.</p>
+        @endif
         @if(!$openSections['dependencies'])
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             @if(!$dependencies)
@@ -294,7 +301,6 @@
         @endif
         @if($openSections['dependencies'])
         <div class="space-y-3">
-        <p class="text-xs text-gray-400 dark:text-gray-500" wire:loading wire:target="checkDependencies">Running composer audit/outdated and npm outdated&hellip;</p>
         @if(!$dependencies)
             <p class="text-sm text-gray-500 dark:text-gray-400">Not checked yet. Checked automatically once a day, or click "Check now".</p>
         @elseif(!$dependencies['hasComposer'] && !$dependencies['hasNpm'])
@@ -343,6 +349,7 @@
                                                 {{ $severities->map(fn ($n, $level) => $n . ' ' . $level)->implode(', ') }}</span>
                                         </span>
                                     </summary>
+                                    <x-dependency-advice :advice="$items->first()['advice'] ?? null" class="mt-1 ml-6" />
                                     <div class="mt-1 space-y-1">
                                     @foreach($items as $adv)
                                         <div class="pl-6">
@@ -367,30 +374,69 @@
                 @endif
             @endforeach
 
-            @foreach(['composer' => ['Composer', $composerOutdated], 'npm' => ['npm', $npmOutdated]] as $section => [$label, $rows])
+            @foreach(['composer' => ['Composer', $composerOutdated, 'composer.json'], 'npm' => ['npm', $npmOutdated, 'package.json']] as $section => [$label, $rows, $manifestFile])
                 @if(count($rows))
+                    @php
+                        $withinRows = collect($rows)->filter(fn ($row) => \App\Services\DependencyHealthChecker::inRange($row, $section));
+                        $outsideRows = collect($rows)->filter(fn ($row) => \App\Services\DependencyHealthChecker::outsideRange($row, $section));
+                        $busy = ($sandbox['state'] ?? null) === 'running';
+                    @endphp
                     <details class="text-sm" wire:ignore.self wire:key="outdated-{{ $section }}">
-                        <summary class="cursor-pointer text-gray-600 dark:text-gray-300">Outdated {{ $label }} packages ({{ count($rows) }})</summary>
-                        <div class="mt-2 flex flex-wrap justify-end gap-2">
-                            <flux:button size="sm" icon="beaker" wire:click="testDependencyUpdate('{{ $section }}')" :disabled="($sandbox['state'] ?? null) === 'running'">Test selected</flux:button>
-                            <flux:button size="sm" variant="primary" icon="arrow-up-circle" wire:click="testDependencyUpdate('{{ $section }}', true)" :disabled="($sandbox['state'] ?? null) === 'running'">Test all {{ $label }}</flux:button>
-                            @if(collect($rows)->contains('major', true))
-                                <flux:button size="sm" variant="filled" color="blue" icon="rocket-launch" wire:click="testDependencyUpdate('{{ $section }}', false, true)" :disabled="($sandbox['state'] ?? null) === 'running'" title="Raise the version constraint of the ticked packages to their latest major version, in the sandbox only">Test major upgrade</flux:button>
-                                <flux:button size="sm" variant="filled" color="blue" icon="rocket-launch" wire:click="testDependencyUpdate('{{ $section }}', true, true)" :disabled="($sandbox['state'] ?? null) === 'running'" title="Try every yellow major-version jump at once, in the sandbox only">Test all majors</flux:button>
+                        <summary class="cursor-pointer text-gray-600 dark:text-gray-300">
+                            Outdated {{ $label }} packages ({{ count($rows) }}):
+                            {{ $withinRows->count() }} within your {{ $manifestFile }} ranges, {{ $outsideRows->count() }} {{ $outsideRows->count() === 1 ? 'needs' : 'need' }} a major upgrade
+                        </summary>
+
+                        @foreach([
+                            'within' => [$withinRows, $section, 'Updates within your ' . $manifestFile . ' ranges', 'These can be updated without changing ' . $manifestFile . '.'],
+                            'outside' => [$outsideRows, $section . '-major', 'Need a major upgrade', 'The newer version is outside the range in ' . $manifestFile . ', so the range has to be raised. Major versions can contain breaking changes; read each upgrade guide.'],
+                        ] as $group => [$groupRows, $selectionKey, $groupTitle, $groupHelp])
+                            @if($groupRows->count())
+                                <div class="mt-3 space-y-2" wire:key="outdated-{{ $section }}-{{ $group }}">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <p class="font-medium {{ $group === 'outside' ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-700 dark:text-gray-200' }}">{{ $groupTitle }} ({{ $groupRows->count() }})</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ $groupHelp }}</p>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            @if($group === 'within')
+                                                <flux:button size="sm" icon="beaker" wire:click="testDependencyUpdate('{{ $section }}')" :disabled="$busy">Test ticked</flux:button>
+                                                <flux:button size="sm" variant="primary" icon="arrow-up-circle" wire:click="testDependencyUpdate('{{ $section }}', true)" :disabled="$busy">Test all {{ $groupRows->count() }}</flux:button>
+                                            @else
+                                                <flux:button size="sm" variant="filled" color="blue" icon="rocket-launch" wire:click="testDependencyUpdate('{{ $section }}', false, true)" :disabled="$busy" title="Raise the range of the ticked packages to their latest version, in the sandbox copy only">Test ticked major upgrades</flux:button>
+                                                <flux:button size="sm" variant="filled" color="blue" icon="rocket-launch" wire:click="testDependencyUpdate('{{ $section }}', true, true)" :disabled="$busy" title="Raise every range in this list at once, in the sandbox copy only">Test all {{ $groupRows->count() }} together</flux:button>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <div class="rounded bg-gray-50 dark:bg-gray-900 p-2 font-mono text-xs space-y-2">
+                                        @foreach($groupRows as $row)
+                                            <div class="space-y-1" wire:key="outdated-{{ $section }}-{{ $group }}-{{ md5($row['name']) }}">
+                                                <label class="flex justify-between gap-4">
+                                                    <span class="flex items-center gap-2">
+                                                        <input type="checkbox" value="{{ $row['name'] }}" wire:model="selectedPackages.{{ $selectionKey }}">
+                                                        {{ $row['name'] }}
+                                                        @if($group === 'outside' && ($row['advice']['level'] ?? null) === 'blocked')
+                                                            <span class="font-sans text-red-600 dark:text-red-400">blocked</span>
+                                                        @endif
+                                                    </span>
+                                                    <span class="text-right">
+                                                        @php $target = $group === 'within' && $section === 'npm' ? ($row['wanted'] ?? $row['latest']) : $row['latest']; @endphp
+                                                        <span class="{{ $group === 'outside' ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $row['current'] ?? 'missing' }} &rarr; {{ $target }}</span>
+                                                        @if(!empty($row['range']))
+                                                            <span class="block font-sans text-gray-400 dark:text-gray-500">range {{ $row['range'] }}</span>
+                                                        @endif
+                                                    </span>
+                                                </label>
+                                                @if($group === 'outside')
+                                                    <x-dependency-advice :advice="$row['advice'] ?? null" class="ml-6" />
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
                             @endif
-                        </div>
-                        <div class="mt-2 rounded bg-gray-50 dark:bg-gray-900 p-2 font-mono text-xs space-y-1">
-                            @foreach($rows as $row)
-                                <label class="flex justify-between gap-4">
-                                    <span class="flex items-center gap-2">
-                                        <input type="checkbox" value="{{ $row['name'] }}" wire:model="selectedPackages.{{ $section }}">
-                                        {{ $row['name'] }}
-                                    </span>
-                                    <span class="{{ $row['major'] ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $row['current'] ?? 'missing' }} &rarr; {{ $row['latest'] }}</span>
-                                </label>
-                            @endforeach
-                        </div>
-                        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Tests run in a sandbox copy of the project first; nothing changes until you apply. <em>Test selected</em> and <em>Test all</em> stay within the version constraints in {{ $section === 'npm' ? 'package.json' : 'composer.json' }}. For the yellow major-version jumps use <em>Test major upgrade</em>, which raises the constraint in the sandbox copy (and in the project only if you apply it).</p>
+                        @endforeach
+                        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">Every test runs in a sandbox copy of the project; nothing changes until you apply it.</p>
                     </details>
                 @endif
             @endforeach
@@ -423,6 +469,9 @@
                             <span class="text-red-600 dark:text-red-400 font-medium">Problems found</span>
                         @endif
                     </div>
+                    @if($sandboxState === 'done' && !empty($sandbox['startedAt']) && !empty($sandbox['finishedAt']))
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Took <x-duration :seconds="\Illuminate\Support\Carbon::parse($sandbox['startedAt'])->diffInSeconds(\Illuminate\Support\Carbon::parse($sandbox['finishedAt']))" /></p>
+                    @endif
 
                     <ul class="space-y-1">
                         @foreach($sandbox['steps'] as $step)
@@ -441,10 +490,22 @@
                     </ul>
 
                     @if(count($sandbox['notes']))
-                        <div class="space-y-1">
+                        <div class="space-y-2">
                             <p class="font-medium">Notes</p>
                             @foreach($sandbox['notes'] as $note)
-                                <p class="{{ $noteClasses[$note['level']] ?? '' }}">{{ $note['text'] }}</p>
+                                <div class="space-y-1">
+                                    <p class="{{ $noteClasses[$note['level']] ?? '' }}">{{ $note['text'] }}</p>
+                                    @if(!empty($note['items']))
+                                        <ul class="list-disc pl-6 space-y-0.5 text-xs text-gray-600 dark:text-gray-300">
+                                            @foreach($note['items'] as $item)
+                                                <li class="wrap-break-word">{{ $item }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                    @if(!empty($note['action']))
+                                        <p class="pl-6 text-xs"><span class="font-medium">Action:</span> <span class="text-gray-700 dark:text-gray-200">{{ $note['action'] }}</span></p>
+                                    @endif
+                                </div>
                             @endforeach
                         </div>
                     @endif
@@ -465,24 +526,40 @@
 
                     @if($sandboxState !== 'running')
                         <div class="flex flex-wrap gap-2">
-                            @if($sandboxState === 'done' && count($sandbox['changes']))
-                                <flux:button size="sm" variant="{{ $sandbox['verdict'] === 'pass' ? 'primary' : 'danger' }}" icon="arrow-down-tray" wire:click="applyDependencyUpdate"
-                                    wire:confirm="{{ $sandbox['verdict'] === 'pass' ? 'Apply the tested versions to the project?' : 'The sandbox found problems. Apply the tested versions to the project anyway?' }}"
+                            @if($sandboxState === 'done' && count($sandbox['changes']) && $sandbox['verdict'] === 'pass')
+                                <flux:button size="sm" variant="primary" icon="arrow-down-tray" wire:click="applyDependencyUpdate"
+                                    wire:confirm="Apply the tested versions to the project? The current lock files are backed up first, and the change is rolled back automatically if the install or boot check fails."
                                     wire:loading.attr="disabled" wire:target="applyDependencyUpdate">
-                                    {{ $sandbox['verdict'] === 'pass' ? 'Apply to project' : 'Apply anyway' }}
+                                    Apply to project
                                 </flux:button>
                             @endif
                             <flux:button size="sm" icon="trash" wire:click="discardDependencySandbox">Discard sandbox</flux:button>
                         </div>
+                        @if($sandboxState === 'done' && $sandbox['verdict'] !== 'pass')
+                            <p class="text-xs text-red-600 dark:text-red-400">This update cannot be applied because the sandbox found problems. Fix the cause and test again.</p>
+                        @endif
                         <p class="text-xs text-gray-400 dark:text-gray-500" wire:loading wire:target="applyDependencyUpdate">Installing the tested versions into the project&hellip;</p>
                     @endif
+                </div>
+            @endif
+
+            @php $undoState = \App\Services\DependencySandbox::undoState($site); @endphp
+            @if($undoState)
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded border border-gray-200 dark:border-gray-700 p-3 text-sm">
+                    <span class="text-gray-600 dark:text-gray-300">
+                        Last applied {{ \Illuminate\Support\Carbon::parse($undoState['appliedAt'])->diffForHumans() }}:
+                        {{ collect($undoState['changes'] ?? [])->map(fn ($c) => $c['name'] . ' ' . $c['from'] . ' → ' . $c['to'])->take(5)->implode(', ') }}{{ count($undoState['changes'] ?? []) > 5 ? ', …' : '' }}
+                    </span>
+                    <flux:button size="sm" variant="danger" icon="arrow-uturn-left" wire:click="undoDependencyUpdate"
+                        wire:confirm="Put the previous lock files back and reinstall the previous versions?"
+                        wire:loading.attr="disabled" wire:target="undoDependencyUpdate">Undo update</flux:button>
                 </div>
             @endif
 
             @if($dependencyUpdateResult)
                 <div class="text-sm space-y-1">
                     <p class="{{ $dependencyUpdateResult['ok'] ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
-                        {{ $dependencyUpdateResult['ok'] ? 'Applied to the project' : 'Not applied' }}
+                        {{ $dependencyUpdateResult['ok'] ? 'Done' : 'Not done' }}
                     </p>
                     <pre class="max-h-64 overflow-auto rounded bg-gray-50 dark:bg-gray-900 p-2 text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ $dependencyUpdateResult['output'] }}</pre>
                 </div>
@@ -523,6 +600,7 @@
                 @endif
             </div>
         </div>
+        <x-job-progress :site="$site" job="tests" :status="$testRun" unit="file" />
         @if(!$openSections['tests'])
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <span class="text-gray-500 dark:text-gray-400">{{ array_sum(array_map('count', $testSuite['files'] ?? [])) }} test(s) in {{ count($testSuite['files'] ?? []) }} file(s)</span>
@@ -538,6 +616,7 @@
                 @endif
                 <span class="text-green-600 dark:text-green-400">{{ $summaryCounts['passed'] ?? 0 }} passed</span>
                 <span class="{{ $summaryFailed ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400' }}">{{ $summaryFailed }} failed</span>
+                <span class="{{ ($summaryCounts['skipped'] ?? 0) ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400' }}" title="Tests that chose not to run (markTestSkipped / ->skip()), usually because something they need is missing. Not a failure.">{{ $summaryCounts['skipped'] ?? 0 }} skipped</span>
                 @if($testRun['finishedAt'])
                     <span class="text-xs text-gray-400 dark:text-gray-500">Last run {{ \Illuminate\Support\Carbon::parse($testRun['finishedAt'])->diffForHumans() }}</span>
                 @endif
@@ -585,7 +664,7 @@
                     <span class="text-green-600 dark:text-green-400">{{ $counts['passed'] ?? 0 }} passed</span>
                     <span class="{{ ($counts['failed'] ?? 0) + ($counts['error'] ?? 0) ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400' }}">{{ ($counts['failed'] ?? 0) + ($counts['error'] ?? 0) }} failed</span>
                     <span class="text-yellow-700 dark:text-yellow-400" title="Tests that chose not to run (markTestSkipped / ->skip()), usually because something they need is missing. Not a failure.">{{ $counts['skipped'] ?? 0 }} skipped</span>
-                    <span class="text-gray-500 dark:text-gray-400">{{ number_format($testResults->sum('time'), 2) }}s</span>
+                    <span class="text-gray-500 dark:text-gray-400"><x-duration :seconds="$testResults->sum('time')" /></span>
                     @if($testRun['finishedAt'])
                         <span class="text-xs text-gray-400 dark:text-gray-500">Finished {{ \Illuminate\Support\Carbon::parse($testRun['finishedAt'])->diffForHumans() }}</span>
                     @endif
@@ -652,7 +731,7 @@
                                         <td class="py-1 pr-3 text-green-600 dark:text-green-400">{{ $run['counts']['passed'] ?? 0 }}</td>
                                         <td class="py-1 pr-3 {{ ($run['counts']['failed'] ?? 0) + ($run['counts']['error'] ?? 0) ? 'text-red-600 dark:text-red-400' : '' }}">{{ ($run['counts']['failed'] ?? 0) + ($run['counts']['error'] ?? 0) }}</td>
                                         <td class="py-1 pr-3 text-yellow-700 dark:text-yellow-400">{{ $run['counts']['skipped'] ?? 0 }}</td>
-                                        <td class="py-1 pr-3">{{ $run['time'] }}s</td>
+                                        <td class="py-1 pr-3"><x-duration :seconds="$run['time']" /></td>
                                         <td class="py-1 pr-3">{{ $run['coverage'] !== null ? $run['coverage'] . '%' : '—' }}</td>
                                     </tr>
                                 @endforeach
@@ -788,7 +867,7 @@
                                         <input type="checkbox" class="mt-1" value="{{ $path }}::{{ $row['name'] }}" wire:model="selectedTests" title="Include this test in Run selected">
                                         <span class="w-14 shrink-0 text-xs {{ $statusClass[$result['status'] ?? ''] ?? 'text-gray-400 dark:text-gray-500' }}">{{ $result['status'] ?? 'not run' }}</span>
                                         <span class="flex-1 text-gray-700 dark:text-gray-300">{{ $row['name'] }}</span>
-                                        @if($result)<span class="text-xs text-gray-400 dark:text-gray-500">{{ $result['time'] }}s</span>@endif
+                                        @if($result)<span class="text-xs text-gray-400 dark:text-gray-500"><x-duration :seconds="$result['time']" /></span>@endif
                                     </label>
                                     @foreach($row['results'] as $item)
                                         @if(in_array($item['status'], ['failed', 'error'], true) && $item['message'] !== '')
