@@ -576,7 +576,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
         @php
             $testRunning = ($testRun['state'] ?? null) === 'running';
-            $testResults = collect($testRun['results'] ?? []);
+            $testResults = collect($this->testResults);
             $resultsByFile = $testResults->groupBy('file');
 
             $statusClass = [

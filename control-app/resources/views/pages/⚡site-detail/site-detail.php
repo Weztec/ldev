@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Component;
+use Livewire\Attributes\Computed;
 use App\Models\Site;
 use App\Services\NginxConfigGenerator;
 use App\Services\SupervisorConfigGenerator;
@@ -175,7 +176,7 @@ new class extends Component {
             $this->dependencies = DependencyHealthChecker::cached($this->site);
         }
         $this->sandbox = DependencySandbox::status($this->site);
-        $this->testRun = TestRunner::status($this->site);
+        $this->loadTestRun();
         if (($this->testRun['finishedAt'] ?? null) !== (end($this->testHistory)['finishedAt'] ?? null)) {
             $this->testHistory = TestRunner::history($this->site);
         }
@@ -222,7 +223,7 @@ new class extends Component {
             'jsRunner' => $found['jsRunner'],
             'unsafe' => TestRunner::unsafeDatabase($root, $found['config'], TestEnvironment::overrides($this->site)),
         ];
-        $this->testRun = TestRunner::status($this->site);
+        $this->loadTestRun();
         $this->testHistory = TestRunner::history($this->site);
         $this->loadTestEnv();
     }
@@ -323,10 +324,24 @@ new class extends Component {
         }
     }
 
+    private function loadTestRun(): void
+    {
+        $status = TestRunner::status($this->site);
+        unset($status['results']);
+        $this->testRun = $status;
+        unset($this->testResults);
+    }
+
+    #[Computed]
+    public function testResults(): array
+    {
+        return TestRunner::status($this->site)['results'] ?? [];
+    }
+
     public function clearTestResults()
     {
         (new TestRunner)->clear($this->site);
-        $this->testRun = TestRunner::status($this->site);
+        $this->loadTestRun();
         $this->testFilter = 'all';
     }
 
@@ -339,7 +354,7 @@ new class extends Component {
     public function runFailedTests()
     {
         $found = TestRunner::discover($this->site->projectRoot());
-        $selection = TestRunner::failedSelection($this->testRun['results'] ?? [], $found['files']);
+        $selection = TestRunner::failedSelection($this->testResults, $found['files']);
         if (!$selection) {
             $this->testError = 'The last run has no failed tests to run again.';
             return;
@@ -374,7 +389,7 @@ new class extends Component {
         }
 
         (new TestRunner)->launch($this->site, $selection, (bool) $this->testCoverage);
-        $this->testRun = TestRunner::status($this->site);
+        $this->loadTestRun();
     }
 
     public function checkDependencies()
