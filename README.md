@@ -226,7 +226,8 @@ now.
 3. Give it a name (e.g. "ldev") and an expiry (Atlassian caps this at 365 days)
 4. App: **Bitbucket**
 5. Scopes: `read:repository:bitbucket` (covers listing/cloning) — add
-   `write:repository:bitbucket` too if you also want to use the "create a new repository" feature
+   `write:repository:bitbucket` and `admin:repository:bitbucket` too if you also want to use the
+   "create a new repository" feature (Bitbucket refuses repository creation without the admin scope)
 6. Create it and copy the token immediately — it's shown only once
 
 On the Repositories page: **Provider** → Bitbucket, **Username** → your Bitbucket username,

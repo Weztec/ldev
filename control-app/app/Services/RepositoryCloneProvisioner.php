@@ -19,7 +19,7 @@ class RepositoryCloneProvisioner
         }
     }
 
-    protected function authenticatedUrl(string $repoUrl, RepositoryToken $token): string
+    public function authenticatedUrl(string $repoUrl, RepositoryToken $token): string
     {
         if (!str_starts_with($repoUrl, 'https://')) {
             return $repoUrl;
@@ -32,7 +32,7 @@ class RepositoryCloneProvisioner
             . (isset($parts['query']) ? '?' . $parts['query'] : '');
 
         return match ($token->provider) {
-            'github' => 'https://' . rawurlencode($token->token) . '@' . $hostAndPath,
+            'github' => 'https://' . rawurlencode($token->username ?: 'x-access-token') . ':' . rawurlencode($token->token) . '@' . $hostAndPath,
             'bitbucket' => 'https://x-token-auth:' . rawurlencode($token->token) . '@' . $hostAndPath,
             default => $repoUrl,
         };
