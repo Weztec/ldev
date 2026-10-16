@@ -135,8 +135,9 @@
                 </p>
                 {!! $img('wizard-step1-clone', 'Step 1 with "Clone an existing repository" selected, showing the connection type and repository URL fields') !!}
                 <h3 class="font-medium">Step 2</h3>
-                <p>For a fresh scaffold: an optional starter kit (Breeze or Jetstream, with a stack and a few
-                    options each), whether to use Pest instead of PHPUnit for tests (ldev installs Pest and converts
+                <p>For a fresh scaffold: an optional starter kit (Laravel's Livewire, React, Vue or Svelte kit,
+                    with built-in, WorkOS or no authentication and optional team support, or a custom kit given as a
+                    Composer package like <span class="font-mono">vendor/package</span>), whether to use Pest instead of PHPUnit for tests (ldev installs Pest and converts
                     the example tests), whether to also provision S3-compatible storage or Laravel Reverb, and
                     whether to create a brand-new remote repository (GitHub or Bitbucket) for it and push the
                     initial commit.</p>

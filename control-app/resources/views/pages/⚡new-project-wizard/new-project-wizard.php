@@ -23,8 +23,8 @@ new class extends Component {
     public $existingDbError = null;
     public $source = 'scaffold';
     public $starter = 'none';
-    public $stack = 'livewire';
-    public $dark = false;
+    public $customKit = '';
+    public $kitAuth = 'laravel';
     public $teams = false;
     public $pest = false;
     public $s3 = false;
@@ -116,7 +116,9 @@ new class extends Component {
 
     public function updatedStarter($value)
     {
-        $this->stack = $value === 'jetstream' ? 'livewire' : 'blade';
+        if (!in_array($value, ['none', 'livewire', 'react', 'vue', 'svelte', 'custom'], true)) {
+            $this->starter = 'none';
+        }
     }
 
     public function create()
@@ -166,17 +168,24 @@ new class extends Component {
                 $options['--pest'] = true;
             }
 
-            if ($this->starter === 'breeze') {
-                $options['--breeze'] = true;
-                $options['--stack'] = $this->stack;
-                if ($this->dark) {
-                    $options['--dark'] = true;
+            if ($this->starter === 'custom') {
+                $package = strtolower(trim((string) $this->customKit));
+                if ($package === '') {
+                    $this->createError = 'Enter the Composer package of the custom starter kit, like vendor/package.';
+                    return;
                 }
-            } elseif ($this->starter === 'jetstream') {
-                $options['--jetstream'] = true;
-                $options['--stack'] = $this->stack;
-                if ($this->teams) {
-                    $options['--teams'] = true;
+                $options['--using'] = $package;
+            } elseif (in_array($this->starter, ['livewire', 'react', 'vue', 'svelte'], true)) {
+                $options['--kit'] = $this->starter;
+                if ($this->kitAuth === 'none') {
+                    $options['--no-auth'] = true;
+                } else {
+                    if ($this->kitAuth === 'workos') {
+                        $options['--workos'] = true;
+                    }
+                    if ($this->teams) {
+                        $options['--teams'] = true;
+                    }
                 }
             }
         }

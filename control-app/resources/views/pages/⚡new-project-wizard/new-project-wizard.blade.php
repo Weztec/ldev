@@ -146,35 +146,31 @@
             @if($source === 'scaffold')
                 <div>
                     <label class="block text-sm font-medium mb-1">Starter kit</label>
-                    <select wire:model="starter" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                        <option value="none">None</option>
-                        <option value="breeze">Breeze</option>
-                        <option value="jetstream">Jetstream</option>
+                    <select wire:model.live="starter" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                        <option value="none">None (plain Laravel)</option>
+                        <option value="livewire">Livewire</option>
+                        <option value="react">React</option>
+                        <option value="vue">Vue</option>
+                        <option value="svelte">Svelte</option>
+                        <option value="custom">Custom starter kit…</option>
                     </select>
                 </div>
-                @if($starter !== 'none')
+                @if($starter === 'custom')
                     <div>
-                        <label class="block text-sm font-medium mb-1">Stack</label>
-                        @if($starter === 'breeze')
-                            <select wire:model="stack" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                                <option value="blade">Blade</option>
-                                <option value="livewire">Livewire</option>
-                                <option value="react">React</option>
-                                <option value="vue">Vue</option>
-                            </select>
-                        @else
-                            <select wire:model="stack" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                                <option value="livewire">Livewire</option>
-                                <option value="inertia">Inertia</option>
-                            </select>
-                        @endif
+                        <label class="block text-sm font-medium mb-1">Composer package</label>
+                        <input type="text" wire:model="customKit" placeholder="vendor/package" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600 font-mono" />
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Installed with <span class="font-mono">composer create-project</span>, like <span class="font-mono">laravel new --using</span>.</p>
                     </div>
-                    @if($starter === 'breeze')
-                    <label class="flex items-center gap-2 text-sm">
-                        <input type="checkbox" wire:model="dark" /> Dark mode support
-                    </label>
-                    @endif
-                    @if($starter === 'jetstream')
+                @elseif($starter !== 'none')
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Authentication</label>
+                        <select wire:model.live="kitAuth" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                            <option value="laravel">Laravel's built-in authentication</option>
+                            <option value="workos">WorkOS AuthKit (needs a WorkOS account)</option>
+                            <option value="none">No authentication</option>
+                        </select>
+                    </div>
+                    @if($kitAuth !== 'none')
                         <label class="flex items-center gap-2 text-sm">
                             <input type="checkbox" wire:model="teams" /> Team support
                         </label>

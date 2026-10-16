@@ -29,18 +29,18 @@ class LdevNew extends Command
     protected const KNOWN_PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
 
     protected $signature = 'ldev:new {name}
-        {--breeze : Install Laravel Breeze}
-        {--jetstream : Install Laravel Jetstream}
-        {--stack= : Starter kit stack (blade|livewire|react|vue)}
-        {--dark : Include dark mode support (Breeze only)}
-        {--teams : Include team support (Jetstream only)}
+        {--kit= : Laravel starter kit (livewire|react|vue|svelte)}
+        {--using= : Composer package of a custom starter kit (vendor/package), instead of --kit}
+        {--teams : Laravel starter kit with team support}
+        {--workos : Laravel starter kit with WorkOS authentication}
+        {--no-auth : Laravel starter kit without authentication scaffolding}
         {--pest : Use Pest instead of PHPUnit}
         {--db=sqlite : Database driver (sqlite|mysql|pgsql|none — none skips Linux Dev\'s own database provisioning entirely, for a plain static site/non-Laravel project that has no business getting an empty database created for it)}
         {--db-name= : mysql/pgsql only — name for the NEW database to create (defaults to the project name)}
         {--db-existing= : mysql/pgsql only — use this database that already exists on the server instead of creating one (e.g. a cloned project whose database survived)}
         {--php= : PHP version for this site\'s Nginx/PHP-FPM pool (defaults to the configured default)}
         {--node= : Node.js version for this project, via nvm (defaults to the configured default; ignored if the project has no package.json)}
-        {--repo= : Clone this repository instead of scaffolding a new Laravel project (--breeze/--jetstream are ignored)}
+        {--repo= : Clone this repository instead of scaffolding a new Laravel project (--kit/--using are ignored)}
         {--token-id= : RepositoryToken id to authenticate the --repo clone with, if it is private}
         {--create-repo : Create a brand-new repository on the chosen provider and push the initial scaffold to it (scaffold path only, ignored with --repo)}
         {--repo-token-id= : RepositoryToken id to create the --create-repo repository with}
@@ -90,9 +90,16 @@ class LdevNew extends Command
             }
 
         } else {
-            $this->info("Creating Laravel project at $path");
+            $package = $this->starterKitPackage();
+            if ($package === null) {
+                return 1;
+            }
+            $this->info("Creating Laravel project at $path from $package");
 
-            $result = Process::inProject(config('ldev.sites_path'))->run('composer create-project laravel/laravel ' . escapeshellarg($name));
+            $command = $package === 'laravel/laravel'
+                ? 'composer create-project laravel/laravel ' . escapeshellarg($name)
+                : 'composer create-project ' . escapeshellarg($package) . ' ' . escapeshellarg($name) . ' --stability=dev --no-interaction';
+            $result = Process::inProject(config('ldev.sites_path'))->timeout(900)->run($command);
             if ($result->failed()) {
                 $host = (new ComposerAuthWriter)->extractAuthFailureHost($result->errorOutput());
                 $this->error($host
@@ -101,34 +108,7 @@ class LdevNew extends Command
                 return 1;
             }
 
-            if ($this->option('breeze')) {
-                $stack = $this->option('stack') ?? 'blade';
-                if (!in_array($stack, ['blade', 'livewire', 'react', 'vue'], true)) {
-                    $this->error("Invalid Breeze stack '$stack' — must be one of: blade, livewire, react, vue.");
-                    return 1;
-                }
-                Process::inProject($path)->run('composer require laravel/breeze --dev');
-                $flags = array_filter([
-                    $this->option('dark') ? '--dark' : null,
-                    $this->option('pest') ? '--pest' : null,
-                ]);
-                Process::inProject($path)->run(trim("php artisan breeze:install $stack " . implode(' ', $flags)));
-            }
-            if ($this->option('jetstream')) {
-                $stack = $this->option('stack') ?? 'livewire';
-                if (!in_array($stack, ['livewire', 'inertia'], true)) {
-                    $this->error("Invalid Jetstream stack '$stack' — must be one of: livewire, inertia.");
-                    return 1;
-                }
-                Process::inProject($path)->run('composer require laravel/jetstream');
-                $flags = array_filter([
-                    $this->option('teams') ? '--teams' : null,
-                    $this->option('pest') ? '--pest' : null,
-                ]);
-                Process::inProject($path)->run(trim("php artisan jetstream:install $stack " . implode(' ', $flags)));
-            }
-
-            if ($this->option('pest') && !$this->option('breeze') && !$this->option('jetstream')) {
+            if ($this->option('pest') && !File::exists($path . '/vendor/bin/pest')) {
                 $this->info('Setting up Pest');
                 foreach ([
                     'composer remove phpunit/phpunit --dev --no-update',
@@ -262,6 +242,41 @@ class LdevNew extends Command
         $version = $this->option('node') ?: Setting::get('default_node_version', $latest);
 
         return in_array($version, $known, true) ? $version : $latest;
+    }
+
+    protected function starterKitPackage(): ?string
+    {
+        $kit = $this->option('kit');
+        $using = $this->option('using');
+
+        if ($using !== null && $using !== '') {
+            if (!preg_match('/^[a-z0-9]([_.-]?[a-z0-9]+)*\/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$/', $using)) {
+                $this->error("Invalid starter kit package '$using' — must be a Composer package name like vendor/package.");
+                return null;
+            }
+            return $using;
+        }
+
+        if ($kit === null || $kit === '') {
+            return 'laravel/laravel';
+        }
+        if (!in_array($kit, ['livewire', 'react', 'vue', 'svelte'], true)) {
+            $this->error("Invalid starter kit '$kit' — must be one of: livewire, react, vue, svelte.");
+            return null;
+        }
+
+        if ($this->option('no-auth')) {
+            return "laravel/blank-$kit-starter-kit";
+        }
+
+        $branch = match (true) {
+            $this->option('workos') && $this->option('teams') => 'dev-workos-teams',
+            (bool) $this->option('workos') => 'dev-workos',
+            (bool) $this->option('teams') => 'dev-teams',
+            default => null,
+        };
+
+        return "laravel/$kit-starter-kit" . ($branch ? ":$branch" : '');
     }
 
     protected function writeInitialManifest(string $path, string $name): void
