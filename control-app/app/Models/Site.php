@@ -36,6 +36,7 @@ class Site extends Model
             File::deleteDirectory($sandbox);
             File::deleteDirectory($sandbox . '-baseline');
             File::deleteDirectory(\App\Services\DependencySandbox::undoDir($site));
+            \App\Services\TestSchemaCache::forget($site->name);
             File::delete([
                 config('ldev.dependency_sandbox_dir') . '/' . $site->name . '.log',
                 \App\Services\DependencyHealthChecker::checkLog($site),

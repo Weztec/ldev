@@ -70,6 +70,7 @@ rm -rf "/home/$SUDO_USER/.ldev/scripts"
 rm -rf "/home/$SUDO_USER/.config/ldev"
 rm -rf "/home/$SUDO_USER/.ldev/storage/dependency-sandbox"
 rm -rf "/home/$SUDO_USER/.ldev/storage/test-runs"
+rm -rf "/home/$SUDO_USER/.ldev/storage/test-schemas"
 rm -rf "/home/$SUDO_USER/.ldev/storage/dumps"
 rm -f "/home/$SUDO_USER/.local/share/applications/ldev.desktop"
 

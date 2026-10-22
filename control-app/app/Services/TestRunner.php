@@ -214,21 +214,7 @@ class TestRunner
 
     public static function unsafeDatabase(string $root, ?string $config, array $overrides = []): ?string
     {
-        $env = [];
-        $xml = $config ? @simplexml_load_file($root . '/' . $config) : false;
-        foreach ($xml ? ($xml->xpath('//php/env') ?: []) : [] as $node) {
-            $forced = in_array(strtolower((string) $node['force']), ['true', '1'], true);
-            $name = (string) $node['name'];
-            $env[$name] = $forced || !array_key_exists($name, $overrides) ? (string) $node['value'] : $overrides[$name];
-        }
-        $env += array_intersect_key($overrides, array_flip(['DB_CONNECTION', 'DB_DATABASE']));
-
-        $dotenv = [];
-        foreach (File::exists($root . '/.env') ? file($root . '/.env', FILE_IGNORE_NEW_LINES) : [] as $line) {
-            if (preg_match('/^\s*(DB_[A-Z_]+)\s*=\s*(.*)$/', $line, $m)) {
-                $dotenv[$m[1]] = trim($m[2], " \"'");
-            }
-        }
+        [$env, $dotenv] = self::databaseEnv($root, $config, $overrides);
 
         $connection = $env['DB_CONNECTION'] ?? $dotenv['DB_CONNECTION'] ?? 'sqlite';
         $database = $env['DB_DATABASE'] ?? $dotenv['DB_DATABASE'] ?? null;
@@ -249,6 +235,27 @@ class TestRunner
         }
 
         return null;
+    }
+
+    public static function databaseEnv(string $root, ?string $config, array $overrides = []): array
+    {
+        $env = [];
+        $xml = $config ? @simplexml_load_file($root . '/' . $config) : false;
+        foreach ($xml ? ($xml->xpath('//php/env') ?: []) : [] as $node) {
+            $forced = in_array(strtolower((string) $node['force']), ['true', '1'], true);
+            $name = (string) $node['name'];
+            $env[$name] = $forced || !array_key_exists($name, $overrides) ? (string) $node['value'] : $overrides[$name];
+        }
+        $env += array_intersect_key($overrides, array_flip(['DB_CONNECTION', 'DB_DATABASE']));
+
+        $dotenv = [];
+        foreach (File::exists($root . '/.env') ? file($root . '/.env', FILE_IGNORE_NEW_LINES) : [] as $line) {
+            if (preg_match('/^\s*(DB_[A-Z_]+)\s*=\s*(.*)$/', $line, $m)) {
+                $dotenv[$m[1]] = trim($m[2], " \"'");
+            }
+        }
+
+        return [$env, $dotenv];
     }
 
     public static function normaliseSelection(array $discovered, array $ids, bool $all): array
@@ -443,6 +450,9 @@ class TestRunner
             }
         }
 
+        $schema = $queue ? (new TestSchemaCache)->prepare($root, $php, self::discover($root)['config'] ?? null, $overrides) : null;
+        $overlay = fn (int $slot) => $dir . '/overlay-' . getmypid() . '-' . $slot;
+
         $slots = array_fill(1, max(1, min(self::workers(), count($queue))), null);
         $label = function () use (&$slots, &$queue, &$javascript) {
             $running = array_column(array_filter($slots), 'path');
@@ -474,7 +484,7 @@ class TestRunner
                     $path = array_key_first($queue);
                     $names = $queue[$path];
                     unset($queue[$path]);
-                    $slots[$slot] = $this->startPhpFile($root, $php, $runner, $path, $names, $overrides, $coverage, $slot, $files($slot));
+                    $slots[$slot] = $this->startPhpFile($root, $php, $runner, $path, $names, $overrides, $coverage, $slot, $files($slot), $schema ? [$schema, $overlay($slot)] : null);
                 }
                 if ($job) {
                     $progress && $progress($label(), $collect());
@@ -493,12 +503,13 @@ class TestRunner
 
         foreach (array_merge([0], array_keys($slots)) as $slot) {
             File::delete(array_values($files($slot)));
+            TestSchemaCache::reset($overlay($slot), false);
         }
 
         return $collect();
     }
 
-    protected function startPhpFile(string $root, string $php, string $runner, string $path, array $names, array $overrides, bool $coverage, int $slot, array $files): array
+    protected function startPhpFile(string $root, string $php, string $runner, string $path, array $names, array $overrides, bool $coverage, int $slot, array $files, ?array $schema = null): array
     {
         File::delete(array_values($files));
 
@@ -508,6 +519,9 @@ class TestRunner
             . ($coverage ? ' --coverage-clover ' . escapeshellarg($files['clover']) : '');
         if ($names) {
             $command .= ' --filter ' . escapeshellarg('/(' . implode('|', array_map(fn ($n) => preg_quote($n, '/'), $names)) . ')/');
+        }
+        if ($schema) {
+            $command = TestSchemaCache::isolate($command, $root, $schema[0], $schema[1]);
         }
 
         return ['path' => $path, 'files' => $files, 'process' => Process::inProject($root)->timeout(600)->start($command)];

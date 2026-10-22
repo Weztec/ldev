@@ -64,7 +64,8 @@ Ubuntu. Inside this project the distro-neutral name `ldev` is used for paths, se
   Checks column on the Sites list, next to outdated and blocked package counts); optionally measure code
   coverage; and keep a short run history that flags possibly flaky tests. Each developer can
   override test settings (database password, host, API keys) for their own machine without editing
-  the project's `phpunit.xml`
+  the project's `phpunit.xml`. PHP test files run in parallel, and MariaDB/MySQL test databases are
+  built from a cached schema dump kept outside the project, so nothing is added to your repository
 - Health badges on the Sites list for vulnerable packages, failing tests and tested updates that
   are ready to apply
 - Composer credentials for private package repositories (such as Flux Pro), set once globally and

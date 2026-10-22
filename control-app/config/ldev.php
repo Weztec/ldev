@@ -79,6 +79,8 @@ return [
 
     'test_runs_dir' => $home . '/.ldev/storage/test-runs',
 
+    'test_schemas_dir' => $home . '/.ldev/storage/test-schemas',
+
     'dumps_dir' => $home . '/.ldev/storage/dumps',
 
     'dump_server' => '127.0.0.1:9912',
