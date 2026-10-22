@@ -295,6 +295,16 @@
             <span class="text-sm">Meilisearch search <span class="text-xs text-gray-400 dark:text-gray-500">sets MEILISEARCH_HOST and MEILISEARCH_KEY in .env, plus SCOUT_DRIVER for Laravel Scout</span></span>
             <flux:switch :checked="$site->usesMeilisearch()" wire:click="toggleMeilisearch" />
         </div>
+        <div class="flex items-center justify-between">
+            <span class="text-sm">
+                S3 storage (RustFS) <span class="text-xs text-gray-400 dark:text-gray-500">creates the {{ $site->name }} bucket and sets FILESYSTEM_DISK=s3 plus the AWS_* keys in .env; off sets FILESYSTEM_DISK=local</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500" wire:loading wire:target="toggleS3">— setting up…</span>
+            </span>
+            <flux:switch :checked="$site->usesS3()" wire:click="toggleS3" />
+        </div>
+        @if($s3Error)
+            <p class="text-xs text-red-600 dark:text-red-400">{{ $s3Error }}</p>
+        @endif
         @if($dbType)
             <div class="flex items-center justify-between">
                 <span class="text-sm">Automatic daily database backup</span>

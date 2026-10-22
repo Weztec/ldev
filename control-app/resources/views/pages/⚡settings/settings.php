@@ -51,6 +51,7 @@ new class extends Component {
 
     public $sandboxes = null;
     public $sandboxPruneDays = 7;
+    public $testWorkers = 4;
     public $sandboxNote = null;
 
     protected array $knownVersions = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
@@ -82,6 +83,7 @@ new class extends Component {
         $this->refreshDashboardBackups();
 
         $this->sandboxPruneDays = \App\Services\DependencySandbox::pruneDays();
+        $this->testWorkers = \App\Services\TestRunner::workers();
 
         $this->desktopNotifications = DesktopNotifier::enabled();
         $this->notificationTimeout = DesktopNotifier::timeoutSeconds();
@@ -130,6 +132,17 @@ new class extends Component {
 
         $this->sandboxPruneDays = (int) $value;
         Setting::set('sandbox_prune_days', (string) $this->sandboxPruneDays);
+    }
+
+    public function updatedTestWorkers($value)
+    {
+        if (!in_array((int) $value, \App\Services\TestRunner::WORKERS, true)) {
+            $this->testWorkers = \App\Services\TestRunner::workers();
+            return;
+        }
+
+        $this->testWorkers = (int) $value;
+        Setting::set('test_workers', (string) $this->testWorkers);
     }
 
     public function updatedDesktopNotifications($value)

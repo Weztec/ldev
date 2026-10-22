@@ -17,6 +17,15 @@ class TestRunner
     protected array $coverageLines = [];
     protected bool $coverageSeen = false;
 
+    public const WORKERS = [1, 2, 4, 8, 16];
+
+    public static function workers(): int
+    {
+        $workers = (int) Setting::get('test_workers', '4');
+
+        return in_array($workers, self::WORKERS, true) ? $workers : 4;
+    }
+
     public static function statusKey(Site $site): string
     {
         return 'tests_site_' . $site->id;
@@ -395,75 +404,145 @@ class TestRunner
     {
         $this->coverageLines = [];
         $this->coverageSeen = false;
-        $clover = config('ldev.test_runs_dir') . '/clover-' . getmypid() . '.xml';
-        $results = [];
-        $junit = config('ldev.test_runs_dir') . '/junit-' . getmypid() . '.xml';
-        $teamcity = config('ldev.test_runs_dir') . '/teamcity-' . getmypid() . '.log';
-        File::ensureDirectoryExists(dirname($junit));
+        $dir = config('ldev.test_runs_dir');
+        File::ensureDirectoryExists($dir);
+        $files = fn (int $slot) => [
+            'junit' => $dir . '/junit-' . getmypid() . '-' . $slot . '.xml',
+            'teamcity' => $dir . '/teamcity-' . getmypid() . '-' . $slot . '.log',
+            'clover' => $dir . '/clover-' . getmypid() . '-' . $slot . '.xml',
+        ];
 
+        $done = [];
+        $collect = function () use ($selection, &$done) {
+            $results = [];
+            foreach (array_keys($selection) as $path) {
+                array_push($results, ...($done[$path] ?? []));
+            }
+
+            return $results;
+        };
+
+        $queue = [];
+        $javascript = [];
         foreach ($selection as $path => $names) {
-            $progress && $progress($path, $results);
-            File::delete([$junit, $teamcity, $clover]);
-
             $style = self::isJavascript(self::jsRunner($root)) && preg_match(self::JS_TEST_PATTERN, $path) ? self::jsRunner($root) : null;
             if ($style) {
-                array_push($results, ...($site ? $this->runJavascriptFile($site, $root, $style, $path, $names, $overrides, $junit) : []));
-                continue;
-            }
-
-            if ($runner === '') {
-                $results[] = ['file' => $path, 'name' => '(file did not run)', 'status' => 'error', 'time' => 0, 'message' => 'No PHP test runner found in vendor/bin (pest or phpunit). Run composer install.'];
-                continue;
-            }
-
-            if ($runner !== 'pest' && self::fileStyle($root . '/' . $path) === 'pest') {
-                $results[] = [
+                $javascript[$path] = [$style, $names];
+            } elseif ($runner === '') {
+                $done[$path] = [['file' => $path, 'name' => '(file did not run)', 'status' => 'error', 'time' => 0, 'message' => 'No PHP test runner found in vendor/bin (pest or phpunit). Run composer install.']];
+            } elseif ($runner !== 'pest' && self::fileStyle($root . '/' . $path) === 'pest') {
+                $done[$path] = [[
                     'file' => $path,
                     'name' => '(needs Pest)',
                     'status' => 'error',
                     'time' => 0,
                     'message' => 'This file is written for Pest, but the project only has PHPUnit installed, so it was not run. Install Pest in the project: composer require pestphp/pest pestphp/pest-plugin-laravel --dev',
-                ];
-                continue;
+                ]];
+            } else {
+                $queue[$path] = $names;
             }
-
-            $env = ['PAO_DISABLE' => 'true'] + ($coverage ? ['XDEBUG_MODE' => 'coverage'] : []) + $overrides;
-            $command = TestEnvironment::commandPrefix($env) . escapeshellarg($php) . ' vendor/bin/' . $runner . ' ' . escapeshellarg($path)
-                . ' --colors=never --log-junit ' . escapeshellarg($junit) . ' --log-teamcity ' . escapeshellarg($teamcity)
-                . ($coverage ? ' --coverage-clover ' . escapeshellarg($clover) : '');
-            if ($names) {
-                $command .= ' --filter ' . escapeshellarg('/(' . implode('|', array_map(fn ($n) => preg_quote($n, '/'), $names)) . ')/');
-            }
-
-            $process = Process::inProject($root)->timeout(600)->run($command);
-            if ($coverage) {
-                $this->mergeClover($clover, $root);
-            }
-            $cases = $this->parseJunit($junit, $path);
-            $reasons = $this->skipReasons($teamcity);
-            foreach ($cases as $i => $case) {
-                if ($case['status'] === 'skipped' && $case['message'] === '' && $reasons) {
-                    $cases[$i]['message'] = array_shift($reasons);
-                }
-            }
-
-            if (!$cases && !$process->successful()) {
-                $cases[] = [
-                    'file' => $path,
-                    'name' => '(file did not run)',
-                    'status' => 'error',
-                    'time' => 0,
-                    'message' => $this->firstErrorLine($process->output() . "\n" . $process->errorOutput()),
-                ];
-            }
-
-            array_push($results, ...$cases);
         }
 
-        File::delete([$junit, $teamcity, $clover]);
-        $progress && $progress(null, $results);
+        $slots = array_fill(1, max(1, min(self::workers(), count($queue))), null);
+        $label = function () use (&$slots, &$queue, &$javascript) {
+            $running = array_column(array_filter($slots), 'path');
+            if (!$running) {
+                return array_key_first($queue) ?? array_key_first($javascript);
+            }
 
-        return $results;
+            return $running[0] . (count($running) > 1 ? ' (+' . (count($running) - 1) . ' more)' : '');
+        };
+        $progress && $progress(array_key_first($queue) ?? array_key_first($javascript) ?? array_key_first($done), $collect());
+        foreach ($done as $ignored) {
+            $progress && $progress(array_key_first($queue) ?? array_key_first($javascript), $collect());
+        }
+
+        while ($queue || array_filter($slots)) {
+            foreach ($slots as $slot => $job) {
+                if ($job) {
+                    try {
+                        $job['process']->ensureNotTimedOut();
+                    } catch (\Throwable) {
+                    }
+                    if ($job['process']->running()) {
+                        continue;
+                    }
+                    $done[$job['path']] = $this->finishPhpFile($job, $root, $coverage);
+                    $slots[$slot] = null;
+                }
+                if ($queue) {
+                    $path = array_key_first($queue);
+                    $names = $queue[$path];
+                    unset($queue[$path]);
+                    $slots[$slot] = $this->startPhpFile($root, $php, $runner, $path, $names, $overrides, $coverage, $slot, $files($slot));
+                }
+                if ($job) {
+                    $progress && $progress($label(), $collect());
+                }
+            }
+            if (array_filter($slots)) {
+                usleep(100000);
+            }
+        }
+
+        foreach ($javascript as $path => [$style, $names]) {
+            unset($javascript[$path]);
+            $done[$path] = $site ? $this->runJavascriptFile($site, $root, $style, $path, $names, $overrides, $files(0)['junit']) : [];
+            $progress && $progress($label(), $collect());
+        }
+
+        foreach (array_merge([0], array_keys($slots)) as $slot) {
+            File::delete(array_values($files($slot)));
+        }
+
+        return $collect();
+    }
+
+    protected function startPhpFile(string $root, string $php, string $runner, string $path, array $names, array $overrides, bool $coverage, int $slot, array $files): array
+    {
+        File::delete(array_values($files));
+
+        $env = ['PAO_DISABLE' => 'true', 'LARAVEL_PARALLEL_TESTING' => '1', 'TEST_TOKEN' => (string) $slot] + ($coverage ? ['XDEBUG_MODE' => 'coverage'] : []) + $overrides;
+        $command = TestEnvironment::commandPrefix($env) . escapeshellarg($php) . ' vendor/bin/' . $runner . ' ' . escapeshellarg($path)
+            . ' --colors=never --log-junit ' . escapeshellarg($files['junit']) . ' --log-teamcity ' . escapeshellarg($files['teamcity'])
+            . ($coverage ? ' --coverage-clover ' . escapeshellarg($files['clover']) : '');
+        if ($names) {
+            $command .= ' --filter ' . escapeshellarg('/(' . implode('|', array_map(fn ($n) => preg_quote($n, '/'), $names)) . ')/');
+        }
+
+        return ['path' => $path, 'files' => $files, 'process' => Process::inProject($root)->timeout(600)->start($command)];
+    }
+
+    protected function finishPhpFile(array $job, string $root, bool $coverage): array
+    {
+        $path = $job['path'];
+        try {
+            $process = $job['process']->wait();
+        } catch (\Throwable $e) {
+            return [['file' => $path, 'name' => '(file did not finish)', 'status' => 'error', 'time' => 0, 'message' => 'Stopped after 10 minutes: ' . $this->firstErrorLine($e->getMessage())]];
+        }
+        if ($coverage) {
+            $this->mergeClover($job['files']['clover'], $root);
+        }
+        $cases = $this->parseJunit($job['files']['junit'], $path);
+        $reasons = $this->skipReasons($job['files']['teamcity']);
+        foreach ($cases as $i => $case) {
+            if ($case['status'] === 'skipped' && $case['message'] === '' && $reasons) {
+                $cases[$i]['message'] = array_shift($reasons);
+            }
+        }
+
+        if (!$cases && !$process->successful()) {
+            $cases[] = [
+                'file' => $path,
+                'name' => '(file did not run)',
+                'status' => 'error',
+                'time' => 0,
+                'message' => $this->firstErrorLine($process->output() . "\n" . $process->errorOutput()),
+            ];
+        }
+
+        return $cases;
     }
 
     protected function runJavascriptFile(Site $site, string $root, string $runner, string $path, array $names, array $overrides, string $report): array

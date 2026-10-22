@@ -286,11 +286,14 @@ class DependencyHealthChecker
         return collect($cached[$key] ?? [])->firstWhere('name', $name);
     }
 
-    public static function npmAdvisories(array $audit): ?array
+    public static function npmAdvisories(array $audit, ?string $root = null): ?array
     {
         if (!isset($audit['vulnerabilities']) || !is_array($audit['vulnerabilities'])) {
             return null;
         }
+        $read = fn (string $file) => $root !== null && is_file($root . '/' . $file) ? (json_decode((string) file_get_contents($root . '/' . $file), true) ?: []) : [];
+        $lock = $read('package-lock.json');
+        $manifest = $read('package.json');
 
         $rows = [];
         foreach ($audit['vulnerabilities'] as $name => $vulnerability) {
@@ -306,7 +309,7 @@ class DependencyHealthChecker
                     'affected' => $vulnerability['range'] ?? null,
                     'link' => null,
                     'manager' => 'npm',
-                    'advice' => DependencyAdvisor::npmAdvisory($vulnerability, $name),
+                    'advice' => DependencyAdvisor::npmAdvisory($vulnerability, $name, $lock, $manifest),
                 ];
                 continue;
             }
@@ -320,7 +323,7 @@ class DependencyHealthChecker
                     'affected' => $source['range'] ?? ($vulnerability['range'] ?? null),
                     'link' => $url,
                     'manager' => 'npm',
-                    'advice' => DependencyAdvisor::npmAdvisory($vulnerability, $name),
+                    'advice' => DependencyAdvisor::npmAdvisory($vulnerability, $name, $lock, $manifest),
                 ];
             }
         }
@@ -331,7 +334,7 @@ class DependencyHealthChecker
     protected function auditNpm(Site $site, string $root, array &$result): void
     {
         $audit = self::npmProcess($site, $root)->timeout(120)->run('npm audit --json');
-        $rows = self::npmAdvisories(json_decode($audit->output() ?: '{}', true) ?: []);
+        $rows = self::npmAdvisories(json_decode($audit->output() ?: '{}', true) ?: [], $root);
         if ($rows === null) {
             $result['errors'][] = 'npm audit: ' . $this->firstLine($audit->errorOutput() ?: $audit->output());
             return;

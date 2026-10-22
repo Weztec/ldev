@@ -292,7 +292,7 @@
                 @endif
                 @if($sandbox)
                     <span class="{{ $sandbox['state'] === 'running' ? 'text-blue-600 dark:text-blue-400' : ($sandbox['state'] === 'done' && $sandbox['verdict'] === 'pass' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') }}">
-                        Sandbox: {{ $sandbox['state'] === 'running' ? 'testing…' : ($sandbox['state'] === 'done' ? ($sandbox['verdict'] === 'pass' ? 'ready to apply' : 'problems found') : 'interrupted') }}
+                        Sandbox: {{ $sandbox['state'] === 'running' ? 'testing…' : ($sandbox['state'] === 'done' ? ($sandbox['verdict'] === 'pass' ? (count($sandbox['changes']) ? 'ready to apply' : 'nothing to apply') : 'problems found') : 'interrupted') }}
                     </span>
                 @endif
                 <span class="text-xs text-gray-400 dark:text-gray-500">Checked {{ \Illuminate\Support\Carbon::parse($dependencies['checkedAt'])->diffForHumans() }}</span>
@@ -463,6 +463,8 @@
                             <span class="text-blue-600 dark:text-blue-400">Running&hellip;</span>
                         @elseif($sandboxState === 'interrupted')
                             <span class="text-red-600 dark:text-red-400">Interrupted</span>
+                        @elseif($sandbox['verdict'] === 'pass' && !count($sandbox['changes']))
+                            <span class="text-gray-600 dark:text-gray-300 font-medium">Nothing to apply</span>
                         @elseif($sandbox['verdict'] === 'pass')
                             <span class="text-green-600 dark:text-green-400 font-medium">No problems found</span>
                         @else

@@ -400,12 +400,25 @@ class DependencyAdvisor
         return self::make('ok', 'Nothing blocks ' . $name . ' ' . $latest . '.', $lines, 'Tick it under Updates within your ranges and use Test ticked.');
     }
 
-    public static function npmAdvisory(array $vulnerability, string $package): array
+    public static function npmAdvisory(array $vulnerability, string $package, array $lock = [], array $manifest = []): array
     {
         $fix = $vulnerability['fixAvailable'] ?? null;
+        $installed = fn (string $name) => $lock['packages']['node_modules/' . $name]['version'] ?? null;
+        $declared = fn (string $name) => $manifest['dependencies'][$name] ?? $manifest['devDependencies'][$name] ?? $manifest['optionalDependencies'][$name] ?? null;
         $lines = [];
+        $chain = $lock && empty($vulnerability['isDirect']) ? self::npmChain($lock, $package) : [];
         if (!empty($vulnerability['isDirect'])) {
-            $lines[] = $package . ' is a direct dependency in package.json.';
+            $lines[] = $package . ' is a direct dependency in package.json' . ($declared($package) !== null ? ' (' . $declared($package) . self::exactPinNote($declared($package)) . ')' : '') . '.';
+        } elseif ($chain) {
+            $child = $package . ($installed($package) ? ' ' . $installed($package) : '');
+            foreach ($chain as [$parent, $version, $range]) {
+                $lines[] = $child . ' comes from ' . $parent . ' ' . $version . ', which requires ' . $range . self::exactPinNote($range) . '.';
+                $child = $parent;
+            }
+            $top = end($chain)[0];
+            if ($declared($top) !== null) {
+                $lines[] = $top . ' is in your package.json as ' . $declared($top) . self::exactPinNote($declared($top)) . '.';
+            }
         } elseif (!empty($vulnerability['nodes'])) {
             $lines[] = 'Installed at ' . implode(', ', array_slice((array) $vulnerability['nodes'], 0, 3)) . '.';
         }
@@ -418,8 +431,28 @@ class DependencyAdvisor
         }
         if (is_array($fix) && !empty($fix['name'])) {
             $via = $fix['name'] === $package ? '' : ' (it pulls in ' . $package . ')';
+            $current = $installed($fix['name']);
+            if ($current && version_compare((string) $fix['version'], $current, '<') && $fix['name'] === $package) {
+                $through = implode(', ', array_filter((array) ($vulnerability['via'] ?? []), 'is_string'));
+                return self::make('blocked', 'No newer release fixes this. Every recent ' . $package . ' release is flagged' . ($through ? ' because it pulls in ' . $through : '') . ', so npm\'s only fix is going back to ' . $package . ' ' . $fix['version'] . ' (you have ' . $current . ').', $lines,
+                    'Your project is not holding this back. Wait for a ' . $package . ' release that fixes ' . ($through ?: 'its dependencies') . ', or see those packages\' advisories for an "overrides" workaround.');
+            }
+            if ($current && version_compare((string) $fix['version'], $current, '<')) {
+                $upstream = $chain ? $chain[0][0] . ' ' . $chain[0][1] . ' (requires ' . $package . ' ' . $chain[0][2] . ')' : $fix['name'];
+                return self::make('blocked', 'Blocked upstream by ' . $upstream . '. No newer release fixes this: npm\'s only fix is going back to ' . $fix['name'] . ' ' . $fix['version'] . ' (you have ' . $current . ').', $lines,
+                    'Your project is not holding this back. Wait for a ' . $fix['name'] . ' release that allows a fixed ' . $package . ', or force one with an "overrides" entry for ' . $package . ' in package.json and test it in the sandbox.');
+            }
             if (!empty($fix['isSemVerMajor'])) {
-                return self::make('action', 'The fix needs ' . $fix['name'] . ' ' . $fix['version'] . ', a major version change' . $via . '.', $lines,
+                $range = $declared($fix['name']);
+                $allowed = null;
+                try {
+                    $allowed = $range !== null ? Semver::satisfies((string) $fix['version'], $range) : null;
+                } catch (\Throwable) {
+                }
+                $blocker = $allowed === false
+                    ? 'Blocked by your project: package.json ' . (self::exactPinNote($range) ? 'pins ' . $fix['name'] . ' to exactly ' . $range : 'has ' . $fix['name'] . ' ' . $range . ', which does not allow ' . $fix['version']) . '. '
+                    : '';
+                return self::make('action', $blocker . 'The fix needs ' . $fix['name'] . ' ' . $fix['version'] . ', a major version change' . $via . '.', $lines,
                     'Tick ' . $fix['name'] . ' in the outdated npm list and use Test ticked major upgrades. Read its upgrade guide first.');
             }
 
@@ -500,6 +533,42 @@ class DependencyAdvisor
         }
 
         return implode(', ', array_slice($items, 0, -1)) . ' and ' . end($items);
+    }
+
+    protected static function npmChain(array $lock, string $package): array
+    {
+        $packages = $lock['packages'] ?? [];
+        $requires = fn (string $path) => ($packages[$path]['dependencies'] ?? []) + ($packages[$path]['optionalDependencies'] ?? []);
+        $from = [];
+        $queue = [];
+        foreach (array_keys($requires('')) as $name) {
+            $from[$name] = null;
+            $queue[] = $name;
+        }
+        while ($queue && !array_key_exists($package, $from)) {
+            $name = array_shift($queue);
+            foreach ($requires('node_modules/' . $name) as $child => $range) {
+                if (!array_key_exists($child, $from)) {
+                    $from[$child] = [$name, (string) $range];
+                    $queue[] = $child;
+                }
+            }
+        }
+
+        $chain = [];
+        $name = $package;
+        while (($from[$name] ?? null) !== null && count($chain) < 10) {
+            [$parent, $range] = $from[$name];
+            $chain[] = [$parent, (string) ($packages['node_modules/' . $parent]['version'] ?? '?'), $range];
+            $name = $parent;
+        }
+
+        return $chain;
+    }
+
+    protected static function exactPinNote(?string $range): string
+    {
+        return $range !== null && preg_match('/^=?v?\d+\.\d+\.\d+(-[\w.]+)?$/', trim($range)) ? ', an exact pin, so npm can never move it' : '';
     }
 
     protected static function make(string $level, string $summary, array $lines, string $action): array

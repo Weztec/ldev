@@ -38,6 +38,7 @@ new class extends Component {
     public $hostsEntries = ['automatic' => [], 'manual' => []];
     public $newHostname = '';
     public $hostsError = null;
+    public $s3Error = null;
     public $queueWorkers;
     public $queueSleep;
     public $queueTries;
@@ -769,6 +770,21 @@ new class extends Component {
         $this->site->usesMeilisearch()
             ? $provisioner->disable($this->site->projectRoot())
             : $provisioner->enable($this->site->projectRoot());
+        $this->loadEnvContent();
+        $this->loadManifest();
+    }
+
+    public function toggleS3()
+    {
+        $this->s3Error = null;
+        $provisioner = new \App\Services\S3Provisioner;
+        try {
+            $this->site->usesS3()
+                ? $provisioner->disable($this->site->projectRoot())
+                : $provisioner->provision($this->site->projectRoot(), $this->site->name);
+        } catch (\Throwable $e) {
+            $this->s3Error = $e->getMessage();
+        }
         $this->loadEnvContent();
         $this->loadManifest();
     }

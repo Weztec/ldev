@@ -418,6 +418,18 @@
             </select>
         </div>
         <p class="text-xs text-gray-400 dark:text-gray-500">Checked once a day. Copies that belong to deleted projects, and copies left over from interrupted tests, are always removed. A running test is never touched.</p>
+        <div class="flex items-center gap-3 text-sm">
+            <label for="test-workers" class="text-gray-500 dark:text-gray-400">Run PHP test files in parallel</label>
+            <select id="test-workers" wire:model.live="testWorkers"
+                class="rounded px-2 py-1 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                <option value="1">1 at a time</option>
+                <option value="2">2 at a time</option>
+                <option value="4">4 at a time</option>
+                <option value="8">8 at a time</option>
+                <option value="16">16 at a time</option>
+            </select>
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500">Used by test runs and sandbox tests. Each parallel file gets its own test database (Laravel's parallel testing: <span class="font-mono">{database}_test_1</span>, <span class="font-mono">_test_2</span>, &hellip;), so tests that use MariaDB or PostgreSQL don't collide. Pick 1 if a project's tests share other state, such as files or a cache server.</p>
 
         @if($sandboxes === null)
             <p class="text-sm text-gray-500 dark:text-gray-400">Measuring&hellip;</p>

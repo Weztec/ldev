@@ -648,7 +648,7 @@ class DependencySandbox
         $this->runTests($site, $dir, $php, true);
 
         $audit = DependencyHealthChecker::npmProcess($site, $dir)->timeout(120)->run('npm audit --json');
-        $rows = DependencyHealthChecker::npmAdvisories(json_decode($audit->output() ?: '{}', true) ?: []);
+        $rows = DependencyHealthChecker::npmAdvisories(json_decode($audit->output() ?: '{}', true) ?: [], $dir);
         if ($rows !== null) {
             $remaining = array_values(array_unique(array_column($rows, 'package')));
             $fixed = array_diff(DependencyHealthChecker::updatablePackages(DependencyHealthChecker::cached($site), 'npm-security'), $remaining);

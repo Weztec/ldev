@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 
 class S3Provisioner
 {
@@ -13,6 +14,11 @@ class S3Provisioner
 
         $this->createBucket($bucket);
 
+        $composer = json_decode((string) @file_get_contents($projectPath . '/composer.json'), true) ?: [];
+        if (isset($composer['require']['laravel/framework']) && !isset($composer['require']['league/flysystem-aws-s3-v3'])) {
+            Process::inProject($projectPath)->run('composer require league/flysystem-aws-s3-v3 --with-all-dependencies')->throw();
+        }
+
         (new EnvFileWriter)->update($projectPath, [
             'FILESYSTEM_DISK' => 's3',
             'AWS_ACCESS_KEY_ID' => config('ldev.s3.access_key'),
@@ -22,6 +28,11 @@ class S3Provisioner
             'AWS_ENDPOINT' => config('ldev.s3.endpoint'),
             'AWS_USE_PATH_STYLE_ENDPOINT' => 'true',
         ]);
+    }
+
+    public function disable(string $projectPath): void
+    {
+        (new EnvFileWriter)->update($projectPath, ['FILESYSTEM_DISK' => 'local']);
     }
 
     public function createBucket(string $bucket): void
