@@ -666,7 +666,7 @@
                     <span class="text-green-600 dark:text-green-400">{{ $counts['passed'] ?? 0 }} passed</span>
                     <span class="{{ ($counts['failed'] ?? 0) + ($counts['error'] ?? 0) ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400' }}">{{ ($counts['failed'] ?? 0) + ($counts['error'] ?? 0) }} failed</span>
                     <span class="text-yellow-700 dark:text-yellow-400" title="Tests that chose not to run (markTestSkipped / ->skip()), usually because something they need is missing. Not a failure.">{{ $counts['skipped'] ?? 0 }} skipped</span>
-                    <span class="text-gray-500 dark:text-gray-400"><x-duration :seconds="$testResults->sum('time')" /></span>
+                    <span class="text-gray-500 dark:text-gray-400"><x-duration :seconds="\App\Services\TestRunner::elapsed($testRun) ?? $testResults->sum('time')" /></span>
                     @if($testRun['finishedAt'])
                         <span class="text-xs text-gray-400 dark:text-gray-500">Finished {{ \Illuminate\Support\Carbon::parse($testRun['finishedAt'])->diffForHumans() }}</span>
                     @endif

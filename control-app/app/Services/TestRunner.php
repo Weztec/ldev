@@ -48,6 +48,15 @@ class TestRunner
         return $status;
     }
 
+    public static function elapsed(array $status): ?float
+    {
+        if (empty($status['startedAt'])) {
+            return null;
+        }
+
+        return round(Carbon::parse($status['startedAt'])->diffInSeconds(Carbon::parse($status['finishedAt'] ?? now())), 2);
+    }
+
     public static function sitePhp(Site $site): string
     {
         $bin = '/usr/bin/php' . str_replace('.', '', (string) $site->php_version);
@@ -348,6 +357,9 @@ class TestRunner
     public function run(Site $site, array $selection, bool $coverage = false): void
     {
         $this->status = self::status($site) ?? [];
+        if (($this->status['state'] ?? null) !== 'running' || !empty($this->status['finishedAt'])) {
+            $this->status = array_merge($this->status, ['startedAt' => now()->toIso8601String(), 'finishedAt' => null, 'selection' => $selection, 'withCoverage' => $coverage]);
+        }
         $this->status['state'] = 'running';
         $this->status['pid'] = getmypid();
         $root = $site->projectRoot();
@@ -387,7 +399,7 @@ class TestRunner
             'finishedAt' => $this->status['finishedAt'],
             'files' => count($this->status['selection'] ?? []),
             'counts' => $results->countBy('status')->all(),
-            'time' => round($results->sum('time'), 2),
+            'time' => self::elapsed($this->status) ?? round($results->sum('time'), 2),
             'coverage' => $this->status['coverage']['percent'] ?? null,
             'failed' => $results->whereIn('status', ['failed', 'error'])->map($id)->values()->all(),
             'passed' => $results->where('status', 'passed')->map(fn ($r) => self::idHash($id($r)))->values()->all(),
