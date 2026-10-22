@@ -380,6 +380,11 @@ cat > /etc/my.cnf.d/99-ldev-skip-name-resolve.cnf <<EOF
 [mariadb]
 skip_name_resolve
 EOF
+cat > /etc/my.cnf.d/99-ldev-dev-speed.cnf <<EOF
+[mariadb]
+innodb_flush_log_at_trx_commit = 2
+innodb_buffer_pool_size = 512M
+EOF
 systemctl restart mariadb
 
 PG_HBA="/var/lib/pgsql/data/pg_hba.conf"

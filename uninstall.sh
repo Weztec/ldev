@@ -56,7 +56,7 @@ for version in 74 80 81 82 83 84 85; do
     rm -f "/etc/opt/remi/php${version}/php.d/99-ldev-variables-order.ini"
 done
 rm -f /etc/pki/ca-trust/source/anchors/ldev-mkcert-rootCA.pem
-rm -f /etc/my.cnf.d/99-ldev-skip-name-resolve.cnf
+rm -f /etc/my.cnf.d/99-ldev-skip-name-resolve.cnf /etc/my.cnf.d/99-ldev-dev-speed.cnf
 
 echo "Reloading systemd-resolved, nginx, supervisord, mariadb, and the system CA trust store..."
 systemctl restart systemd-resolved 2>/dev/null
