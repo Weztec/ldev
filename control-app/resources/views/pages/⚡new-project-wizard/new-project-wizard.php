@@ -102,6 +102,13 @@ new class extends Component {
         }
     }
 
+    public function updatedName($value)
+    {
+        $this->validateOnly('name', ['name' => ['required', 'string', 'regex:' . Site::NAME_PATTERN]], [
+            'name.regex' => 'Use only lowercase letters, numbers and dashes, starting with a letter or number (like my-app).',
+        ]);
+    }
+
     public function updatedSource($value)
     {
         if ($value === 'clone' && $this->repoProtocol === 'ssh' && $this->sshDiagnosis === null) {
@@ -131,7 +138,9 @@ new class extends Component {
         if ($this->source === 'clone') {
             $rules['repoUrl'] = ['required', 'string', 'max:2048'];
         }
-        $this->validate($rules);
+        $this->validate($rules, [
+            'name.regex' => 'Use only lowercase letters, numbers and dashes, starting with a letter or number (like my-app).',
+        ]);
 
         $options = [
             'name' => $this->name,

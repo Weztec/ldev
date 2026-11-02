@@ -7,6 +7,7 @@
                 <label class="block text-sm font-medium mb-1">Project name</label>
                 <input type="text" wire:model.live="name" placeholder="my-app"
                     class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600" />
+                @error('name') <span class="text-xs text-red-600 dark:text-red-400">{{ $message }}</span> @enderror
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Source</label>
@@ -140,7 +141,7 @@
                 </div>
             @endif
             <div class="flex justify-end">
-                <flux:button variant="primary" icon:trailing="arrow-right" wire:click="$set('step', 2)" :disabled="! $name || ($source === 'clone' && ! $repoUrl)">Next</flux:button>
+                <flux:button variant="primary" icon:trailing="arrow-right" wire:click="$set('step', 2)" :disabled="! $name || $errors->has('name') || ($source === 'clone' && ! $repoUrl)">Next</flux:button>
             </div>
         @elseif($step === 2)
             @if($source === 'scaffold')
@@ -214,9 +215,14 @@
             <label class="flex items-center gap-2 text-sm">
                 <input type="checkbox" wire:model="reverb" /> WebSockets (Laravel Reverb)
             </label>
-            @if($createError)
+            @if($createError || $errors->any())
                 <div class="rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-3">
-                    <p class="text-sm text-red-700 dark:text-red-400 whitespace-pre-wrap">{{ $createError }}</p>
+                    @foreach($errors->all() as $error)
+                        <p class="text-sm text-red-700 dark:text-red-400">{{ $error }}</p>
+                    @endforeach
+                    @if($createError)
+                        <p class="text-sm text-red-700 dark:text-red-400 whitespace-pre-wrap">{{ $createError }}</p>
+                    @endif
                 </div>
             @endif
             <div class="flex justify-between items-center">
