@@ -741,6 +741,9 @@ new class extends Component {
 
     public function toggleQueueWorker()
     {
+        if (!$this->site->queue_worker_enabled && !$this->site->usesArtisan()) {
+            return;
+        }
         $this->site->update(['queue_worker_enabled' => !$this->site->queue_worker_enabled]);
         (new SupervisorConfigGenerator)->generate($this->site);
     }
@@ -748,6 +751,9 @@ new class extends Component {
     public function toggleReverb()
     {
         $enabling = !$this->site->reverb_enabled;
+        if ($enabling && !$this->site->usesArtisan()) {
+            return;
+        }
         $this->site->update(['reverb_enabled' => $enabling]);
 
         if ($enabling) {
@@ -760,6 +766,9 @@ new class extends Component {
 
     public function toggleScheduler()
     {
+        if (!$this->site->scheduler_enabled && !$this->site->usesArtisan()) {
+            return;
+        }
         $this->site->update(['scheduler_enabled' => !$this->site->scheduler_enabled]);
         (new SupervisorConfigGenerator)->generate($this->site);
     }

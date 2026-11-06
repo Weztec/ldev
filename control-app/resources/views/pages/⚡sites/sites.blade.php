@@ -314,6 +314,7 @@
                                             <input type="checkbox" wire:model="candidateConfigs.{{ $name }}.xdebug_enabled">
                                             Xdebug
                                         </label>
+                                        @if($candidateConfigs[$name]['artisan'] ?? false)
                                         <label class="flex items-center gap-1.5 text-xs whitespace-nowrap">
                                             <input type="checkbox" wire:model="candidateConfigs.{{ $name }}.queue_worker_enabled">
                                             Queue worker
@@ -322,6 +323,9 @@
                                             <input type="checkbox" wire:model="candidateConfigs.{{ $name }}.reverb_enabled">
                                             Reverb (WebSockets)
                                         </label>
+                                        @else
+                                        <span class="text-xs text-gray-500 dark:text-gray-400">Not a Laravel project: no queue worker or Reverb</span>
+                                        @endif
                                     </div>
                                 </div>
                             @endif

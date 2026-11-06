@@ -36,13 +36,16 @@ class SupervisorConfigGenerator
     {
         $site->loadMissing('processes');
 
-        if (!$site->queue_worker_enabled && !$site->reverb_enabled && !$site->scheduler_enabled
+        $artisan = $site->usesArtisan();
+
+        if (!($artisan && ($site->queue_worker_enabled || $site->reverb_enabled || $site->scheduler_enabled))
             && !$site->processes->where('enabled', true)->count() && !filled($site->supervisor_extra)) {
             return null;
         }
 
         return view('supervisor.worker', [
             'site' => $site,
+            'artisan' => $artisan,
             'projectRoot' => $site->projectRoot(),
             'owner' => trim(Process::run('whoami')->output()),
         ])->render();

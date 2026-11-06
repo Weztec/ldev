@@ -58,6 +58,7 @@ class NewProjectDetector
             'supervisor_extra' => $backup['supervisor_extra'] ?? null,
             'processes' => $backup['processes'] ?? [],
             'from_backup' => $backup !== null,
+            'artisan' => is_file(config('ldev.sites_path') . "/$name/artisan"),
         ];
     }
 
@@ -70,6 +71,9 @@ class NewProjectDetector
         $configBackup = new SiteConfigBackup;
         $hadBackup = $configBackup->restore($name) !== null;
         $resolved = array_merge($this->resolveConfig($name), $overrides);
+        if (!is_file("$projectPath/artisan")) {
+            $resolved['queue_worker_enabled'] = $resolved['reverb_enabled'] = $resolved['scheduler_enabled'] = false;
+        }
 
         $phpVersion = in_array($resolved['php_version'], self::KNOWN_PHP_VERSIONS, true)
             ? $resolved['php_version']

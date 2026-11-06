@@ -275,10 +275,17 @@
             <span class="text-sm">Xdebug</span>
             <flux:switch :checked="$site->xdebug_enabled" wire:click="toggleXdebug" />
         </div>
+        @php $artisan = $site->usesArtisan(); @endphp
+        @if(!$artisan)
+            <p class="text-xs text-gray-500 dark:text-gray-400">Queue worker, Reverb and Scheduler need a Laravel project (no <code>artisan</code> file found).</p>
+        @endif
+        @if($artisan || $site->queue_worker_enabled)
         <div class="flex items-center justify-between">
             <span class="text-sm">Queue worker</span>
             <flux:switch :checked="$site->queue_worker_enabled" wire:click="toggleQueueWorker" />
         </div>
+        @endif
+        @if($artisan || $site->reverb_enabled)
         <div class="flex items-center justify-between">
             <span class="text-sm">
                 Reverb (WebSockets)
@@ -287,10 +294,13 @@
             </span>
             <flux:switch :checked="$site->reverb_enabled" wire:click="toggleReverb" />
         </div>
+        @endif
+        @if($artisan || $site->scheduler_enabled)
         <div class="flex items-center justify-between">
             <span class="text-sm">Scheduler (schedule:work)</span>
             <flux:switch :checked="$site->scheduler_enabled" wire:click="toggleScheduler" />
         </div>
+        @endif
         <div class="flex items-center justify-between">
             <span class="text-sm">Meilisearch search <span class="text-xs text-gray-400 dark:text-gray-500">sets MEILISEARCH_HOST and MEILISEARCH_KEY in .env, plus SCOUT_DRIVER for Laravel Scout</span></span>
             <flux:switch :checked="$site->usesMeilisearch()" wire:click="toggleMeilisearch" />

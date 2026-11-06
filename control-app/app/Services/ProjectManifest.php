@@ -413,7 +413,9 @@ class ProjectManifest
             $applied = array_merge($applied, array_keys($updates));
         }
 
-        if (($manifest['reverb'] ?? false) && !$site->reverb_enabled) {
+        if (($manifest['reverb'] ?? false) && !$site->reverb_enabled && !$site->usesArtisan()) {
+            $warnings[] = 'Reverb from ' . self::FILENAME . ' was skipped: not a Laravel project (no artisan file).';
+        } elseif (($manifest['reverb'] ?? false) && !$site->reverb_enabled) {
             $site->update(['reverb_enabled' => true]);
             (new ReverbProvisioner)->provision($path, $site);
             $applied[] = 'reverb_enabled';

@@ -47,7 +47,7 @@ if (is_file($s3EnvFile)) {
 
 return [
 
-    'version' => '1.3.1',
+    'version' => '1.3.2',
 
     'platform' => 'fedora',
 

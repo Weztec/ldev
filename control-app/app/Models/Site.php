@@ -99,6 +99,11 @@ class Site extends Model
             : $this->document_root;
     }
 
+    public function usesArtisan(): bool
+    {
+        return File::exists($this->projectRoot() . '/artisan');
+    }
+
     public function databaseType(): ?string
     {
         $envPath = $this->projectRoot() . '/.env';

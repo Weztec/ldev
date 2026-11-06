@@ -1,5 +1,5 @@
 
-@if($site->queue_worker_enabled)
+@if($artisan && $site->queue_worker_enabled)
 [program:{{ $site->name }}-queue]
 
 command=php artisan queue:work --queue={{ $site->queue_names }} --sleep={{ $site->queue_sleep }} --tries={{ $site->queue_tries }} --max-time={{ $site->queue_max_time }}
@@ -16,7 +16,7 @@ redirect_stderr=true
 stdout_logfile={{ config('ldev.home') }}/.config/ldev/logs/{{ $site->name }}-queue.log
 stopwaitsecs={{ $site->queue_max_time }}
 @endif
-@if($site->reverb_enabled)
+@if($artisan && $site->reverb_enabled)
 
 [program:{{ $site->name }}-reverb]
 command=php artisan reverb:start --port={{ $site->reverb_port }}
@@ -31,7 +31,7 @@ redirect_stderr=true
 stdout_logfile={{ config('ldev.home') }}/.config/ldev/logs/{{ $site->name }}-reverb.log
 stopwaitsecs=10
 @endif
-@if($site->scheduler_enabled)
+@if($artisan && $site->scheduler_enabled)
 
 [program:{{ $site->name }}-scheduler]
 command=php artisan schedule:work
