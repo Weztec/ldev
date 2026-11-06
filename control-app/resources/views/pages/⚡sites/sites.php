@@ -6,6 +6,7 @@ use App\Models\RepositoryToken;
 use App\Services\NginxConfigGenerator;
 use App\Services\SupervisorConfigGenerator;
 use App\Services\SiteCloner;
+use App\Services\RemoteRepositoryProvisioner;
 use App\Services\NewProjectDetector;
 use App\Services\SiteConfigBackup;
 use Illuminate\Support\Facades\File;
@@ -25,6 +26,11 @@ new class extends Component {
     public $repositoryTokens;
 
     public $cloneRepoWarning = null;
+
+    public $linkCreateRepo = false;
+    public $linkRepoTokenId = null;
+    public $linkRepoVisibility = 'private';
+    public $linkRepoNotes = [];
 
     public $pushNote = null;
     public $pushError = null;
@@ -114,17 +120,42 @@ new class extends Component {
     {
         $toLink = array_intersect($this->selectedCandidates, $this->foundCandidates);
         $detector = new NewProjectDetector;
+        $token = $this->linkCreateRepo ? RepositoryToken::find($this->linkRepoTokenId) : null;
+        $private = $this->linkRepoVisibility !== 'public';
+        $this->linkRepoNotes = [];
 
         foreach ($toLink as $name) {
 
-            $detector->link($name, autoApplyFeatures: false, overrides: $this->candidateConfigs[$name] ?? []);
+            [$site] = $detector->link($name, autoApplyFeatures: false, overrides: $this->candidateConfigs[$name] ?? []);
+
+            if ($token) {
+                $this->linkRepoNotes[] = $this->createRepoForLinked($site, $token, $private);
+            }
         }
+        $this->linkCreateRepo = false;
 
         $this->foundCandidates = [];
         $this->selectedCandidates = [];
         $this->candidateConfigs = [];
         $this->scanned = false;
         $this->sites = Site::all();
+    }
+
+    protected function createRepoForLinked(Site $site, RepositoryToken $token, bool $private): string
+    {
+        $path = $site->projectRoot();
+        $remotes = preg_split('/\s+/', trim(Process::inProject($path)->run('git remote')->output()));
+        if (in_array('origin', $remotes, true)) {
+            return "{$site->name}: already has an origin remote, no repository created.";
+        }
+
+        try {
+            $url = (new RemoteRepositoryProvisioner)->createAndPush($path, $site->name, $token, $private);
+
+            return "{$site->name}: pushed to {$url}";
+        } catch (\Throwable $e) {
+            return "{$site->name}: linked, but creating the repository failed: " . $e->getMessage();
+        }
     }
 
     public function pushSite($siteId)

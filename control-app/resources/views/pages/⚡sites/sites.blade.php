@@ -253,6 +253,17 @@
         </div>
     @endif
 
+    @if($linkRepoNotes)
+        <div class="mt-4 max-w-lg p-3 rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-sm flex items-start justify-between gap-2">
+            <div class="text-blue-800 dark:text-blue-300 space-y-1">
+                @foreach($linkRepoNotes as $note)
+                    <p>{{ $note }}</p>
+                @endforeach
+            </div>
+            <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="$set('linkRepoNotes', [])"></flux:button>
+        </div>
+    @endif
+
     @if($pushNote)
         <div class="mt-4 max-w-lg p-3 rounded border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-sm flex items-start justify-between gap-2">
             <p class="text-green-800 dark:text-green-300">{{ $pushNote }}</p>
@@ -332,6 +343,33 @@
                         </div>
                     @endforeach
                 </div>
+                <label class="flex items-center gap-2 text-sm pt-1">
+                    <input type="checkbox" wire:model.live="linkCreateRepo">
+                    Also create a new repository for each project without a remote and push it there
+                </label>
+                @if($linkCreateRepo)
+                    <div class="pl-6 grid grid-cols-2 gap-2 max-w-md border-l-2 border-blue-200 dark:border-blue-800">
+                        <div>
+                            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Using token</label>
+                            <select wire:model="linkRepoTokenId" class="w-full rounded px-2 py-1 text-sm border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                                <option value="">Select a token…</option>
+                                @foreach($repositoryTokens as $repoToken)
+                                    <option value="{{ $repoToken->id }}">{{ $repoToken->username }} ({{ $repoToken->provider }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Visibility</label>
+                            <select wire:model="linkRepoVisibility" class="w-full rounded px-2 py-1 text-sm border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                                <option value="private">Private</option>
+                                <option value="public">Public</option>
+                            </select>
+                        </div>
+                        @if($repositoryTokens->isEmpty())
+                            <p class="col-span-2 text-xs text-gray-500 dark:text-gray-400">No tokens saved yet — add one on the <a href="{{ route('repositories') }}" wire:navigate class="text-blue-500">Repositories</a> page first.</p>
+                        @endif
+                    </div>
+                @endif
                 <div class="flex gap-2 pt-1">
                     <flux:button variant="primary" icon="plus" wire:click="addSelectedCandidates"
                         wire:loading.attr="disabled" wire:target="addSelectedCandidates"

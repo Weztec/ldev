@@ -98,7 +98,10 @@
                     <span class="font-mono">git clone</span> it there directly, click
                     <strong>Scan for untracked projects</strong>. It finds anything in <span class="font-mono">~/Sites</span>
                     that isn't registered yet, and lets you review &mdash; and edit &mdash; each one's PHP/Node
-                    version and flags before adding it, rather than silently guessing. This also happens on its
+                    version and flags before adding it, rather than silently guessing. Queue worker and Reverb are
+                    only offered for Laravel projects (ones with an <span class="font-mono">artisan</span> file). Tick
+                    <strong>Also create a new repository</strong> to create a GitHub/Bitbucket repository for each
+                    project that has no <span class="font-mono">origin</span> remote yet and push it there. This also happens on its
                     own every 5 minutes in the background, so a copied-in project turns up without you doing anything.
                 </p>
                 <h3 class="font-medium">Removing a project</h3>
