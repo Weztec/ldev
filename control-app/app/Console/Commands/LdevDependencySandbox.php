@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 class LdevDependencySandbox extends Command
 {
-    protected $signature = 'ldev:dependency-sandbox {site} {section} {packages?*} {--all} {--major}';
+    protected $signature = 'ldev:dependency-sandbox {site} {section} {packages?*} {--all} {--major} {--quick}';
     protected $description = 'Apply a dependency update to a sandbox copy of a project and check that it still boots, builds and passes its tests';
 
     public function handle(): int
@@ -38,7 +38,7 @@ class LdevDependencySandbox extends Command
             return self::FAILURE;
         }
 
-        (new DependencySandbox)->run($site, $section, $packages, $all && !$major, $major);
+        (new DependencySandbox)->run($site, $section, $packages, $all && !$major, $major, (bool) $this->option('quick'));
 
         return self::SUCCESS;
     }

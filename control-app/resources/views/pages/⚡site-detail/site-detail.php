@@ -60,6 +60,7 @@ new class extends Component {
 
     public $dependencies = null;
     public $selectedPackages = ['security' => [], 'npm-security' => [], 'composer' => [], 'npm' => [], 'composer-major' => [], 'npm-major' => []];
+    public bool $quickUpdate = false;
     public $dependencyUpdateResult = null;
     public $sandbox = null;
     public $depsCheck = null;
@@ -429,7 +430,7 @@ new class extends Component {
 
         $this->dependencyUpdateResult = null;
         (new DependencySandbox)->discard($this->site);
-        (new DependencySandbox)->launch($this->site, $section, $packages, $all, $major);
+        (new DependencySandbox)->launch($this->site, $section, $packages, $all, $major, $this->quickUpdate);
         $this->selectedPackages = ['security' => [], 'npm-security' => [], 'composer' => [], 'npm' => [], 'composer-major' => [], 'npm-major' => []];
         $this->sandbox = DependencySandbox::status($this->site);
     }

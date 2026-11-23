@@ -48,7 +48,7 @@ class SiteHealth
                 'testsProgress' => ($tests['state'] ?? null) === 'running' && !empty($tests['progress']['total'])
                     ? min($tests['progress']['done'] + 1, $tests['progress']['total']) . '/' . $tests['progress']['total'] : null,
                 'unmetRequirements' => $manifests->exists($site->projectRoot()) ? count($manifests->unmetRequirements($site)) : 0,
-                'sandbox' => ($sandbox['state'] ?? null) === 'done' ? $sandbox['verdict'] : (($sandbox['state'] ?? null) === 'running' ? 'running' : null),
+                'sandbox' => ($sandbox['state'] ?? null) === 'done' ? (empty($sandbox['applied']) ? $sandbox['verdict'] : null) : (($sandbox['state'] ?? null) === 'running' ? 'running' : null),
             ];
         }
 

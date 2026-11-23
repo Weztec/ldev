@@ -174,7 +174,7 @@ class DependencySandbox
         return DependencyHealthChecker::manager($section) === 'npm' ? ['package.json', 'package-lock.json'] : ['composer.json', 'composer.lock'];
     }
 
-    public function launch(Site $site, string $section, array $packages, bool $all, bool $major = false): void
+    public function launch(Site $site, string $section, array $packages, bool $all, bool $major = false, bool $quick = false): void
     {
         $this->status = [
             'state' => 'running',
@@ -182,6 +182,7 @@ class DependencySandbox
             'packages' => $packages,
             'all' => $all,
             'major' => $major,
+            'quick' => $quick,
             'startedAt' => now()->toIso8601String(),
             'finishedAt' => null,
             'pid' => null,
@@ -198,6 +199,7 @@ class DependencySandbox
             [(string) $site->id, $section],
             $all ? ['--all'] : [],
             $major ? ['--major'] : [],
+            $quick ? ['--quick'] : [],
             $packages ? array_merge(['--'], $packages) : []
         )));
         $log = config('ldev.dependency_sandbox_dir') . '/' . $site->name . '.log';
@@ -208,11 +210,12 @@ class DependencySandbox
         ));
     }
 
-    public function run(Site $site, string $section, array $packages, bool $all, bool $major = false): void
+    public function run(Site $site, string $section, array $packages, bool $all, bool $major = false, bool $quick = false): void
     {
         $this->status = self::status($site) ?? [];
         $this->status['pid'] = getmypid();
         $this->status['state'] = 'running';
+        $this->status['quick'] = $quick;
         $root = $site->projectRoot();
         $dir = self::dir($site);
         $php = TestRunner::sitePhp($site);
@@ -375,6 +378,20 @@ class DependencySandbox
         if (!$status || $status['state'] !== 'done') {
             return ['ok' => false, 'output' => 'No finished sandbox run to apply.'];
         }
+        if (!empty($status['applied'])) {
+            return ['ok' => false, 'output' => 'This update was already applied.'];
+        }
+
+        $result = $this->applyStatus($site, $status);
+        if ($result['ok']) {
+            $this->discard($site);
+        }
+
+        return $result;
+    }
+
+    protected function applyStatus(Site $site, array $status): array
+    {
         if (($status['verdict'] ?? null) !== 'pass') {
             return ['ok' => false, 'output' => 'The sandbox test found problems, so this update cannot be applied. Read the notes, fix the cause, and test again.'];
         }
@@ -414,7 +431,8 @@ class DependencySandbox
             File::copy($dir . '/' . $file, $root . '/' . $file);
         }
 
-        $install = $this->install($site, $section, $root);
+        $reused = $this->adoptInstalled($section, $dir, $root);
+        $install = $this->install($site, $section, $root, $reused);
         $failure = $install->successful() ? $this->verifyProject($site, $status, $root) : 'The install failed.';
         $output = $install->output() . "\n" . $install->errorOutput();
 
@@ -436,9 +454,52 @@ class DependencySandbox
             'hashes' => $this->hashes($root, $section),
             'changes' => $status['changes'],
         ]));
-        $this->discard($site);
 
-        return ['ok' => true, 'output' => 'Applied. The previous ' . implode('/', $files) . ' are kept, so Undo can put them back.' . "\n\n" . $this->tail($output)];
+        return ['ok' => true, 'output' => 'Applied' . ($reused ? ' (reused the packages already installed in the sandbox)' : '') . '. The previous ' . implode('/', $files) . ' are kept, so Undo can put them back.' . "\n\n" . $this->tail($output)];
+    }
+
+    protected function adoptInstalled(string $section, string $dir, string $root): bool
+    {
+        if ($this->isNpm($section)) {
+            $name = 'node_modules';
+        } else {
+            $manifest = json_decode((string) @file_get_contents($root . '/composer.json'), true) ?: [];
+            $name = $manifest['config']['vendor-dir'] ?? 'vendor';
+            if ($name !== 'vendor') {
+                return false;
+            }
+        }
+
+        $from = $dir . '/' . $name;
+        $to = $root . '/' . $name;
+        if (!is_dir($from) || is_link($from) || is_link($to)) {
+            return false;
+        }
+
+        $new = $to . '.ldev-new';
+        $old = $to . '.ldev-old';
+        $remove = fn (string $path) => Process::timeout(600)->run('rm -rf ' . escapeshellarg($path));
+        $remove($new);
+        $remove($old);
+
+        if (!Process::timeout(600)->run('cp -a --reflink=auto ' . escapeshellarg($from) . ' ' . escapeshellarg($new))->successful()) {
+            $remove($new);
+            return false;
+        }
+        if (is_dir($to) && !@rename($to, $old)) {
+            $remove($new);
+            return false;
+        }
+        if (!@rename($new, $to)) {
+            if (is_dir($old)) {
+                @rename($old, $to);
+            }
+            $remove($new);
+            return false;
+        }
+        $remove($old);
+
+        return true;
     }
 
     public function undo(Site $site): array
@@ -485,10 +546,10 @@ class DependencySandbox
         return $install->successful() ? null : $this->firstLine($install->errorOutput() ?: $install->output());
     }
 
-    protected function install(Site $site, string $section, string $root)
+    protected function install(Site $site, string $section, string $root, bool $reconcile = false)
     {
         return $this->isNpm($section)
-            ? DependencyHealthChecker::npmProcess($site, $root)->timeout(900)->run('npm ci')
+            ? DependencyHealthChecker::npmProcess($site, $root)->timeout(900)->run($reconcile ? 'npm install' : 'npm ci')
             : Process::inProject($root)->timeout(900)->run(escapeshellarg(TestRunner::sitePhp($site)) . ' "$(command -v composer)" install --no-interaction --no-progress');
     }
 
@@ -539,10 +600,15 @@ class DependencySandbox
             return;
         }
 
-        File::deleteDirectory(self::dir($site));
-        File::deleteDirectory(self::dir($site) . '-baseline');
+        $this->removeCopies($site);
         File::delete(config('ldev.dependency_sandbox_dir') . '/' . $site->name . '.log');
         Setting::set(self::statusKey($site), '');
+    }
+
+    protected function removeCopies(Site $site): void
+    {
+        File::deleteDirectory(self::dir($site));
+        File::deleteDirectory(self::dir($site) . '-baseline');
     }
 
     protected function plannedSteps(string $root, string $manager, string $section, array $packages, bool $major): int
@@ -619,7 +685,9 @@ class DependencySandbox
             }
         }
 
-        $this->runTests($site, $dir, $php);
+        if (empty($this->status['quick'])) {
+            $this->runTests($site, $dir, $php);
+        }
 
         $audit = Process::inProject($dir)->timeout(120)->run(escapeshellarg($php) . ' "$(command -v composer)" audit --format=json --locked --no-interaction');
         $data = json_decode($audit->output(), true);
@@ -645,7 +713,9 @@ class DependencySandbox
             $this->check($site, 'Front-end build (npm run build)', fn ($path) => DependencyHealthChecker::npmProcess($site, $path)->timeout(600)->run('npm run build'));
         }
 
-        $this->runTests($site, $dir, $php, true);
+        if (empty($this->status['quick'])) {
+            $this->runTests($site, $dir, $php, true);
+        }
 
         $audit = DependencyHealthChecker::npmProcess($site, $dir)->timeout(120)->run('npm audit --json');
         $rows = DependencyHealthChecker::npmAdvisories(json_decode($audit->output() ?: '{}', true) ?: [], $dir);
@@ -774,21 +844,56 @@ class DependencySandbox
 
         if ($this->baselineDir) {
             File::deleteDirectory($this->baselineDir);
+            $this->baselineDir = null;
+        }
+
+        $quick = !empty($this->status['quick']);
+        if ($quick) {
+            $this->note('info', 'Quick update: the test suite was not run.');
+        }
+
+        $this->status['verdict'] = collect($this->status['notes'])->contains('level', 'danger') ? 'issues' : 'pass';
+        if ($quick && $this->status['verdict'] === 'pass' && ($this->status['changes'] ?? [])) {
+            $this->installQuick($site);
         }
 
         $this->status['state'] = 'done';
         $this->status['finishedAt'] = now()->toIso8601String();
         $this->status['progress'] = null;
-        $this->status['verdict'] = collect($this->status['notes'])->contains('level', 'danger') ? 'issues' : 'pass';
         $this->save($site);
 
+        $pass = $this->status['verdict'] === 'pass';
         (new DesktopNotifier)->send(
-            'Sandbox test finished: ' . $site->name,
-            $this->status['verdict'] === 'pass'
-                ? 'No problems found. Open the project to review and apply the update.'
-                : 'Problems found. Open the project to read the notes.',
-            $this->status['verdict'] === 'pass' ? 'normal' : 'critical'
+            ($quick ? 'Quick update finished: ' : 'Sandbox test finished: ') . $site->name,
+            match (true) {
+                !empty($this->status['applied']) => 'Applied to the project. Undo is available on the project page.',
+                $pass => 'No problems found. Open the project to review and apply the update.',
+                default => 'Problems found. Open the project to read the notes.',
+            },
+            $pass ? 'normal' : 'critical'
         );
+    }
+
+    protected function installQuick(Site $site): void
+    {
+        $this->status['steps'][] = ['name' => 'Install into the project', 'status' => 'running', 'output' => ''];
+        $this->progress($site, 'Install into the project');
+
+        try {
+            $result = $this->applyStatus($site, $this->status);
+        } catch (\Throwable $e) {
+            $result = ['ok' => false, 'output' => $e->getMessage()];
+        }
+
+        $this->setLastStep($result['ok'] ? 'ok' : 'failed', $result['output']);
+        if ($result['ok']) {
+            $this->status['applied'] = true;
+            $this->removeCopies($site);
+            DependencyHealthChecker::launch($site);
+        } else {
+            $this->note('danger', 'Install into the project failed: ' . $this->firstLine($result['output']));
+            $this->status['verdict'] = 'issues';
+        }
     }
 
     protected function copyProject(string $from, string $to): bool

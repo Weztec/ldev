@@ -292,7 +292,7 @@
                 @endif
                 @if($sandbox)
                     <span class="{{ $sandbox['state'] === 'running' ? 'text-blue-600 dark:text-blue-400' : ($sandbox['state'] === 'done' && $sandbox['verdict'] === 'pass' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') }}">
-                        Sandbox: {{ $sandbox['state'] === 'running' ? 'testing…' : ($sandbox['state'] === 'done' ? ($sandbox['verdict'] === 'pass' ? (count($sandbox['changes']) ? 'ready to apply' : 'nothing to apply') : 'problems found') : 'interrupted') }}
+                        {{ !empty($sandbox['quick']) ? 'Quick update' : 'Sandbox' }}: {{ $sandbox['state'] === 'running' ? (!empty($sandbox['quick']) ? 'updating…' : 'testing…') : ($sandbox['state'] === 'done' ? (!empty($sandbox['applied']) ? 'applied' : ($sandbox['verdict'] === 'pass' ? (count($sandbox['changes']) ? 'ready to apply' : 'nothing to apply') : 'problems found')) : 'interrupted') }}
                     </span>
                 @endif
                 <span class="text-xs text-gray-400 dark:text-gray-500">Checked {{ \Illuminate\Support\Carbon::parse($dependencies['checkedAt'])->diffForHumans() }}</span>
@@ -323,6 +323,13 @@
                 @endif
                 <span class="text-xs text-gray-400 dark:text-gray-500 self-center">Checked {{ \Illuminate\Support\Carbon::parse($dependencies['checkedAt'])->diffForHumans() }}</span>
             </div>
+            <label class="flex items-start gap-2 text-sm">
+                <input type="checkbox" wire:model.live="quickUpdate" class="mt-0.5">
+                <span>
+                    <span class="font-medium text-gray-700 dark:text-gray-200">Quick update</span>
+                    <span class="block text-xs text-gray-500 dark:text-gray-400">The buttons below skip the test suite and apply the update to the project as soon as the app boots, views compile and the front end builds in the sandbox copy. Undo stays available.</span>
+                </span>
+            </label>
 
             @foreach(['security' => ['Composer', 'composer'], 'npm-security' => ['npm', 'npm']] as $securitySection => [$securityLabel, $securityManager])
                 @php $securityRows = collect($advisories)->filter(fn ($adv) => ($adv['manager'] ?? 'composer') === $securityManager); @endphp
@@ -436,7 +443,7 @@
                                 </div>
                             @endif
                         @endforeach
-                        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">Every test runs in a sandbox copy of the project; nothing changes until you apply it.</p>
+                        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">Every test runs in a sandbox copy of the project; nothing changes until you apply it, or until the checks pass when Quick update is on.</p>
                     </details>
                 @endif
             @endforeach
@@ -453,7 +460,7 @@
                 <div class="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-3 text-sm">
                     <div class="flex flex-wrap justify-between items-center gap-2">
                         <div>
-                            <span class="font-medium">Sandbox test</span>
+                            <span class="font-medium">{{ !empty($sandbox['quick']) ? 'Quick update' : 'Sandbox test' }}</span>
                             <span class="text-gray-500 dark:text-gray-400">
                                 &mdash; {{ $sandbox['section'] }}:
                                 {{ $sandbox['all'] ? 'all packages' : implode(', ', $sandbox['packages']) }}{{ !empty($sandbox['major']) ? ' (major upgrade)' : '' }}
@@ -463,6 +470,8 @@
                             <span class="text-blue-600 dark:text-blue-400">Running&hellip;</span>
                         @elseif($sandboxState === 'interrupted')
                             <span class="text-red-600 dark:text-red-400">Interrupted</span>
+                        @elseif(!empty($sandbox['applied']))
+                            <span class="text-green-600 dark:text-green-400 font-medium">Applied to project</span>
                         @elseif($sandbox['verdict'] === 'pass' && !count($sandbox['changes']))
                             <span class="text-gray-600 dark:text-gray-300 font-medium">Nothing to apply</span>
                         @elseif($sandbox['verdict'] === 'pass')
@@ -528,14 +537,14 @@
 
                     @if($sandboxState !== 'running')
                         <div class="flex flex-wrap gap-2">
-                            @if($sandboxState === 'done' && count($sandbox['changes']) && $sandbox['verdict'] === 'pass')
+                            @if($sandboxState === 'done' && count($sandbox['changes']) && $sandbox['verdict'] === 'pass' && empty($sandbox['applied']))
                                 <flux:button size="sm" variant="primary" icon="arrow-down-tray" wire:click="applyDependencyUpdate"
                                     wire:confirm="Apply the tested versions to the project? The current lock files are backed up first, and the change is rolled back automatically if the install or boot check fails."
                                     wire:loading.attr="disabled" wire:target="applyDependencyUpdate">
                                     Apply to project
                                 </flux:button>
                             @endif
-                            <flux:button size="sm" icon="trash" wire:click="discardDependencySandbox">Discard sandbox</flux:button>
+                            <flux:button size="sm" icon="trash" wire:click="discardDependencySandbox">{{ !empty($sandbox['applied']) ? 'Dismiss' : 'Discard sandbox' }}</flux:button>
                         </div>
                         @if($sandboxState === 'done' && $sandbox['verdict'] !== 'pass')
                             <p class="text-xs text-red-600 dark:text-red-400">This update cannot be applied because the sandbox found problems. Fix the cause and test again.</p>

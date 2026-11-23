@@ -51,7 +51,9 @@ Ubuntu. Inside this project the distro-neutral name `ldev` is used for paths, se
   way (the version constraint is raised in the copy only). The notes say whether a problem is new
   or was already there, nothing changes in the project until you apply the tested versions (only
   possible after a clean pass, with an automatic rollback if the install fails and an Undo button), and a
-  desktop notification tells you when the test has finished. Outdated packages are split into updates
+  desktop notification tells you when the test has finished. Applying reuses the packages already
+  installed in the sandbox, so it doesn't download everything again. **Quick update** skips the test suite and applies
+  the update as soon as the boot, view and build checks pass in the copy. Outdated packages are split into updates
   that fit your version ranges and those that need a major upgrade, each with its own buttons. Sandbox
   copies share unchanged files with the project on btrfs, are listed with their disk use in Settings, and
   unapplied ones are deleted automatically after 7 days (configurable)
