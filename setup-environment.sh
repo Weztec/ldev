@@ -60,8 +60,12 @@ echo "🚀 Starting Linux Dev environment setup..."
 dnf install -y https://rpms.remirepo.net/fedora/remi-release-44.rpm
 dnf config-manager enable remi
 
+NODE_PKGS=()
+rpm -q --whatprovides /usr/bin/node >/dev/null 2>&1 || NODE_PKGS+=(nodejs)
+rpm -q --whatprovides /usr/bin/npm >/dev/null 2>&1 || NODE_PKGS+=(npm)
+
 dnf install -y nginx dnsmasq mkcert nss-tools git curl wget unzip rsync \
-    nodejs npm mariadb-server postgresql-server valkey memcached supervisor \
+    "${NODE_PKGS[@]}" mariadb-server postgresql-server valkey memcached supervisor \
     php php-cli php-fpm php-mysqlnd php-pgsql php-gd php-mbstring \
     php-xml php-curl php-zip php-intl php-pecl-redis6 php-pecl-memcached php-pecl-xdebug3 \
     policycoreutils-python-utils podman
