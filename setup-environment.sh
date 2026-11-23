@@ -372,7 +372,7 @@ cat > /etc/systemd/user/ldev-meilisearch.service <<EOF
 Description=Linux Dev Meilisearch
 
 [Service]
-ExecStart=/usr/local/bin/meilisearch --db-path /home/$SUDO_USER/.ldev/storage/meilisearch/data.ms --dump-dir /home/$SUDO_USER/.ldev/storage/meilisearch/dumps --snapshot-dir /home/$SUDO_USER/.ldev/storage/meilisearch/snapshots --http-addr 127.0.0.1:7700 --env development --no-analytics
+ExecStart=/usr/local/bin/meilisearch --db-path /home/$SUDO_USER/.ldev/storage/meilisearch/data.ms --dump-dir /home/$SUDO_USER/.ldev/storage/meilisearch/dumps --snapshot-dir /home/$SUDO_USER/.ldev/storage/meilisearch/snapshots --http-addr 127.0.0.1:7700 --env development --no-analytics --upgrade-db
 Restart=always
 
 [Install]
