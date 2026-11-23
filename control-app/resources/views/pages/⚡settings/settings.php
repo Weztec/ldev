@@ -204,6 +204,14 @@ new class extends Component {
         }
         $this->versionChecks['dnf'] = (new \App\Services\StackUpdateChecker)->pending($this->versionChecks['dnf'] ?? null);
 
+        if (isset($this->versionChecks['php']['newCycles'])) {
+            $latest = \App\Services\PhpVersions::latest() ?? '0.0';
+            $this->versionChecks['php']['newCycles'] = array_values(array_filter(
+                $this->versionChecks['php']['newCycles'],
+                fn ($cycle) => version_compare($cycle . '.0', $latest . '.0', '>')
+            ));
+        }
+
         $this->versionCheckLastRun = Setting::get('version_check_last_run');
     }
 
