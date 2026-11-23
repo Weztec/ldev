@@ -32,7 +32,7 @@
                 <h2 class="text-lg font-medium">Getting started</h2>
                 <p>
                     Linux Dev is a Laravel Valet/Herd-style local development environment for Fedora 44 KDE Plasma:
-                    nginx, PHP 7.4&ndash;8.5, MariaDB, PostgreSQL, Valkey, Memcached, Mailpit, RustFS (S3 storage), Supervisor,
+                    nginx, PHP 7.4&ndash;8.6, MariaDB, PostgreSQL, Valkey, Memcached, Mailpit, RustFS (S3 storage), Supervisor,
                     mkcert and dnsmasq, provisioned by shell scripts, plus this dashboard for managing it day to day.
                 </p>
                 <h3 class="font-medium">Installing</h3>
@@ -350,7 +350,7 @@
                 {!! $img('services-system', 'The System card with OS, kernel, uptime and the labelled 1, 5 and 15 minute load averages') !!}
                 {!! $img('services', 'The Services page, with the System, Memory & disk and Databases & certificates cards above one switch per service and its installed version') !!}
                 <h3 class="font-medium">PHP Versions page</h3>
-                <p>Every PHP version Linux Dev installs (7.4 through 8.5) runs its own PHP-FPM pool, independently
+                <p>Every PHP version Linux Dev installs (7.4 through 8.6, plus any newer one added on the PHP Versions page) runs its own PHP-FPM pool, independently
                     startable/stoppable here. A project's chosen PHP version (set in the wizard or Project
                     settings) is just which pool its nginx vhost talks to &mdash; the pool for that version needs
                     to actually be running for the site to load.</p>

@@ -8,8 +8,6 @@ use Illuminate\Support\Facades\Http;
 class VersionChecker
 {
 
-    protected const INSTALLED_PHP_CYCLES = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
-
     public function checkPhp(): ?array
     {
         try {
@@ -25,10 +23,10 @@ class VersionChecker
         usort($cycles, fn ($a, $b) => version_compare($b['cycle'] . '.0', $a['cycle'] . '.0'));
         $newest = $cycles[0];
 
-        $maxInstalled = collect(self::INSTALLED_PHP_CYCLES)->sortByDesc(fn ($c) => version_compare($c . '.0', '0'))->first();
+        $maxInstalled = PhpVersions::latest() ?? '0.0';
         $newCycles = collect($cycles)
             ->pluck('cycle')
-            ->reject(fn ($cycle) => in_array($cycle, self::INSTALLED_PHP_CYCLES, true))
+            ->reject(fn ($cycle) => in_array($cycle, PhpVersions::installed(), true))
             ->filter(fn ($cycle) => version_compare($cycle . '.0', $maxInstalled . '.0') > 0)
             ->sortByDesc(fn ($cycle) => version_compare($cycle . '.0', '0'))
             ->values()

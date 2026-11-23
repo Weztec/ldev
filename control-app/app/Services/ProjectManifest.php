@@ -13,8 +13,6 @@ class ProjectManifest
 {
     public const FILENAME = 'ldev.json';
 
-    public const PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
-
     public const DATABASE_DRIVERS = ['sqlite', 'mysql', 'pgsql', 'none'];
 
     public const SERVICES = [
@@ -75,10 +73,10 @@ class ProjectManifest
 
         if (array_key_exists('php', $data)) {
             $php = is_scalar($data['php']) ? (string) $data['php'] : '';
-            if (in_array($php, self::PHP_VERSIONS, true)) {
+            if (in_array($php, PhpVersions::installed(), true)) {
                 $out['php'] = $php;
             } else {
-                $this->warnings[] = 'php: ' . $this->show($data['php']) . ' is not an installed version (' . implode(', ', self::PHP_VERSIONS) . ').';
+                $this->warnings[] = 'php: ' . $this->show($data['php']) . ' is not an installed version (' . implode(', ', PhpVersions::installed()) . ').';
             }
         }
 

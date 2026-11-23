@@ -22,7 +22,7 @@
             <div>
                 <label class="block text-sm font-medium mb-1">New project PHP version</label>
                 <select wire:model.live="defaultPhpVersion" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                    @foreach(['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'] as $version)
+                    @foreach(\App\Services\PhpVersions::installed() as $version)
                         <option value="{{ $version }}">{{ $version }}</option>
                     @endforeach
                 </select>
@@ -149,7 +149,7 @@
                     <span class="text-gray-500 dark:text-gray-400">PHP</span>
                     @if(!empty($php['newCycles']))
                         <span class="text-yellow-700 dark:text-yellow-400">
-                            {{ implode(', ', $php['newCycles']) }} available (installed up to 8.5)
+                            {{ implode(', ', $php['newCycles']) }} available (installed up to {{ \App\Services\PhpVersions::latest() }})
                         </span>
                     @else
                         <span class="text-green-600 dark:text-green-400">Up to date — latest is {{ $php['latestPatch'] }}</span>

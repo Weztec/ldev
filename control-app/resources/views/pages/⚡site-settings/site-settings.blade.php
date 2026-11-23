@@ -98,7 +98,7 @@
             <div>
                 <label class="block text-sm font-medium mb-1">PHP version</label>
                 <select wire:model.live="phpVersion" class="w-full rounded px-3 py-2 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                    @foreach(['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'] as $version)
+                    @foreach(\App\Services\PhpVersions::installed() as $version)
                         <option value="{{ $version }}">{{ $version }}</option>
                     @endforeach
                 </select>

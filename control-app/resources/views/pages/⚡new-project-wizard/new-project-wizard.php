@@ -41,12 +41,10 @@ new class extends Component {
     public $createRepoVisibility = 'private';
     public $createError = null;
 
-    protected array $knownVersions = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
-
     public function mount()
     {
 
-        $this->phpVersion = Setting::get('default_php_version', end($this->knownVersions));
+        $this->phpVersion = Setting::get('default_php_version', \App\Services\PhpVersions::latest());
 
         $knownNodeVersions = NodeVersionManager::KNOWN_VERSIONS;
         $this->nodeVersion = Setting::get('default_node_version', end($knownNodeVersions));

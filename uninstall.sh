@@ -51,7 +51,9 @@ rm -f /etc/supervisord.d/ldev-*.ini
 chown root:root /etc/supervisord.d 2>/dev/null
 rm -f /etc/php.d/99-ldev-mailpit.ini
 rm -f /etc/php.d/99-ldev-variables-order.ini
-for version in 74 80 81 82 83 84 85; do
+for conf in /etc/opt/remi/php*/php.d; do
+    [[ -d "$conf" ]] || continue
+    version="${conf#/etc/opt/remi/php}"; version="${version%%/*}"
     rm -f "/etc/opt/remi/php${version}/php.d/99-ldev-mailpit.ini"
     rm -f "/etc/opt/remi/php${version}/php.d/99-ldev-variables-order.ini"
 done

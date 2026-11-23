@@ -9,6 +9,7 @@ use App\Models\Site;
 use App\Models\Setting;
 use App\Models\RepositoryToken;
 use App\Services\ProjectSetupPipeline;
+use App\Services\PhpVersions;
 use App\Services\DatabaseProvisioner;
 use App\Services\S3Provisioner;
 use App\Services\ReverbProvisioner;
@@ -25,8 +26,6 @@ use App\Services\ProjectManifest;
 
 class LdevNew extends Command
 {
-
-    protected const KNOWN_PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
 
     protected $signature = 'ldev:new {name}
         {--kit= : Laravel starter kit (livewire|react|vue|svelte)}
@@ -228,7 +227,7 @@ class LdevNew extends Command
 
     protected function resolvePhpVersion(): string
     {
-        $known = self::KNOWN_PHP_VERSIONS;
+        $known = PhpVersions::installed();
         $latest = end($known);
         $version = $this->option('php') ?: Setting::get('default_php_version', $latest);
 

@@ -306,7 +306,7 @@
                                         <div>
                                             <label class="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">PHP</label>
                                             <select wire:model="candidateConfigs.{{ $name }}.php_version" class="w-full rounded px-2 py-1 text-sm border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                                                @foreach(['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'] as $version)
+                                                @foreach(\App\Services\PhpVersions::installed() as $version)
                                                     <option value="{{ $version }}">{{ $version }}</option>
                                                 @endforeach
                                             </select>

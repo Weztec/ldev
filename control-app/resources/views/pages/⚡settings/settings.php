@@ -54,8 +54,6 @@ new class extends Component {
     public $testWorkers = 4;
     public $sandboxNote = null;
 
-    protected array $knownVersions = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
-
     protected function latestKnownNodeVersion(): string
     {
         $versions = NodeVersionManager::KNOWN_VERSIONS;
@@ -67,7 +65,7 @@ new class extends Component {
         $this->npmUpgradeNote = session('npmUpgradeNote');
         $this->maskedToken = $this->maskToken($this->currentToken());
 
-        $this->defaultPhpVersion = Setting::get('default_php_version', end($this->knownVersions));
+        $this->defaultPhpVersion = Setting::get('default_php_version', \App\Services\PhpVersions::latest());
 
         $this->defaultNodeVersion = Setting::get('default_node_version', $this->latestKnownNodeVersion());
         $this->refreshActiveDefaultNodeVersion();
@@ -386,8 +384,8 @@ new class extends Component {
 
     public function updatedDefaultPhpVersion($value)
     {
-        if (!in_array($value, $this->knownVersions, true)) {
-            $this->defaultPhpVersion = Setting::get('default_php_version', end($this->knownVersions));
+        if (!in_array($value, \App\Services\PhpVersions::installed(), true)) {
+            $this->defaultPhpVersion = Setting::get('default_php_version', \App\Services\PhpVersions::latest());
             return;
         }
 

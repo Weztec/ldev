@@ -75,8 +75,6 @@ new class extends Component {
     public $manifestNote = null;
     public $manifestError = null;
 
-    protected array $knownPhpVersions = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
-
     public function mount(Site $site)
     {
         $this->site = $site;
@@ -483,7 +481,7 @@ new class extends Component {
 
     public function updatedPhpVersion($value)
     {
-        if (!in_array($value, $this->knownPhpVersions, true)) {
+        if (!in_array($value, \App\Services\PhpVersions::installed(), true)) {
             $this->phpVersion = $this->site->php_version;
             return;
         }
@@ -724,7 +722,7 @@ new class extends Component {
 
     public function restartPhpFpm()
     {
-        if (!in_array($this->phpVersion, $this->knownPhpVersions, true)) {
+        if (!in_array($this->phpVersion, \App\Services\PhpVersions::installed(), true)) {
             return;
         }
 

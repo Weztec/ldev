@@ -19,7 +19,7 @@ Ubuntu. Inside this project the distro-neutral name `ldev` is used for paths, se
 ## What's included
 
 - Wildcard `*.test` domains over HTTPS via mkcert + dnsmasq, including subdomains
-- Multiple PHP versions (7.4 through 8.5) selectable per site, switchable at any time
+- Multiple PHP versions (7.4 through 8.6, plus any newer Remi release installed from the PHP Versions page) selectable per site, switchable at any time
 - Multiple Node.js versions (via nvm) selectable per site
 - MariaDB, PostgreSQL, and SQLite — pick a driver per project, and either create a new database or
   point at one that already exists

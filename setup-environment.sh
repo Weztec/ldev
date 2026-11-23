@@ -6,6 +6,18 @@ if [[ $EUID -ne 0 || -z "${SUDO_USER:-}" ]]; then
     exit 1
 fi
 
+PHP_VERSIONS=(74 80 81 82 83 84 85 86)
+
+installed_php_versions() {
+    local conf v
+    for conf in /etc/opt/remi/php*/php-fpm.d/www.conf; do
+        [[ -f "$conf" ]] || continue
+        v="${conf#/etc/opt/remi/php}"
+        v="${v%%/*}"
+        [[ "$v" =~ ^[0-9]{2,3}$ ]] && (( v >= 74 )) && echo "$v"
+    done
+}
+
 OLD_APP_DIR="/home/$SUDO_USER/.fldev"
 NEW_APP_DIR="/home/$SUDO_USER/.ldev"
 OLD_CFG_DIR="/home/$SUDO_USER/.config/fldev"
@@ -30,7 +42,7 @@ if [[ -d "$OLD_APP_DIR" || -d "$OLD_CFG_DIR" ]]; then
 
     rm -f /etc/nginx/conf.d/fldev.conf /etc/dnsmasq.d/fldev.conf /etc/polkit-1/rules.d/10-fldev.rules \
           /etc/my.cnf.d/99-fldev-skip-name-resolve.cnf /etc/php.d/99-fldev-mailpit.ini /etc/php.d/99-fldev-variables-order.ini
-    for version in 74 80 81 82 83 84 85; do
+    for version in $(installed_php_versions); do
         rm -f "/etc/opt/remi/php${version}/php.d/99-fldev-mailpit.ini" "/etc/opt/remi/php${version}/php.d/99-fldev-variables-order.ini"
     done
 
@@ -54,7 +66,7 @@ dnf install -y nginx dnsmasq mkcert nss-tools git curl wget unzip rsync \
     php-xml php-curl php-zip php-intl php-pecl-redis6 php-pecl-memcached php-pecl-xdebug3 \
     policycoreutils-python-utils podman
 
-for version in 74 80 81 82 83 84 85; do
+for version in "${PHP_VERSIONS[@]}"; do
     dnf install -y php${version} php${version}-php-fpm php${version}-php-cli \
         php${version}-php-mysqlnd php${version}-php-pgsql php${version}-php-gd \
         php${version}-php-mbstring php${version}-php-xml php${version}-php-curl \
@@ -62,7 +74,7 @@ for version in 74 80 81 82 83 84 85; do
         php${version}-php-pecl-memcached php${version}-php-pecl-xdebug3
 done
 
-for wwwconf in /etc/php-fpm.d/www.conf $(for v in 74 80 81 82 83 84 85; do echo "/etc/opt/remi/php${v}/php-fpm.d/www.conf"; done); do
+for wwwconf in /etc/php-fpm.d/www.conf $(for v in $(installed_php_versions); do echo "/etc/opt/remi/php${v}/php-fpm.d/www.conf"; done); do
     sed -i \
         -e 's/^;\?listen\.owner\s*=.*/listen.owner = nginx/' \
         -e 's/^;\?listen\.group\s*=.*/listen.group = nginx/' \
@@ -262,6 +274,13 @@ sed -i \
     -e "s/^group\s*=.*/group = $REAL_USER/" \
     "$WWWCONF"
 
+cat > "/etc/opt/remi/php${VERSION}/php.d/99-ldev-mailpit.ini" <<INIEOF
+sendmail_path = "/usr/local/bin/mailpit sendmail -S 127.0.0.1:1025"
+INIEOF
+cat > "/etc/opt/remi/php${VERSION}/php.d/99-ldev-variables-order.ini" <<INIEOF
+variables_order = "EGPCS"
+INIEOF
+
 systemctl enable "php${VERSION}-php-fpm"
 systemctl restart "php${VERSION}-php-fpm"
 
@@ -302,7 +321,7 @@ cat > /etc/php.d/99-ldev-variables-order.ini <<EOF
 variables_order = "EGPCS"
 EOF
 
-for version in 74 80 81 82 83 84 85; do
+for version in $(installed_php_versions); do
     cat > "/etc/opt/remi/php${version}/php.d/99-ldev-mailpit.ini" <<EOF
 sendmail_path = "/usr/local/bin/mailpit sendmail -S 127.0.0.1:1025"
 EOF
@@ -365,7 +384,7 @@ systemctl restart nginx dnsmasq mariadb postgresql valkey memcached supervisord
 
 systemctl enable php-fpm
 systemctl restart php-fpm
-for version in 74 80 81 82 83 84 85; do
+for version in $(installed_php_versions); do
     systemctl enable "php${version}-php-fpm"
     systemctl restart "php${version}-php-fpm"
 done

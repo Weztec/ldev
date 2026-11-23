@@ -47,7 +47,7 @@ if (is_file($s3EnvFile)) {
 
 return [
 
-    'version' => '1.3.2',
+    'version' => '1.4.0',
 
     'platform' => 'fedora',
 
@@ -97,8 +97,7 @@ return [
     'services' => [
         'system' => [
             'nginx', 'php-fpm', 'mariadb', 'postgresql', 'valkey', 'memcached', 'supervisord',
-            'php74-php-fpm', 'php80-php-fpm', 'php81-php-fpm', 'php82-php-fpm',
-            'php83-php-fpm', 'php84-php-fpm', 'php85-php-fpm',
+            ...\App\Services\PhpVersions::fpmUnits(),
         ],
         'user' => ['ldev-mailpit', 'ldev-rustfs', 'ldev-meilisearch', 'ldev-dumps'],
     ],

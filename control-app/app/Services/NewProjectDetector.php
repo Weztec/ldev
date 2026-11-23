@@ -36,8 +36,6 @@ class NewProjectDetector
         return $candidates;
     }
 
-    protected const KNOWN_PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
-
     public function resolveConfig(string $name): array
     {
         $backup = (new SiteConfigBackup)->restore($name);
@@ -75,7 +73,7 @@ class NewProjectDetector
             $resolved['queue_worker_enabled'] = $resolved['reverb_enabled'] = $resolved['scheduler_enabled'] = false;
         }
 
-        $phpVersion = in_array($resolved['php_version'], self::KNOWN_PHP_VERSIONS, true)
+        $phpVersion = in_array($resolved['php_version'], PhpVersions::installed(), true)
             ? $resolved['php_version']
             : $this->defaultPhpVersion();
         $nodeVersion = in_array($resolved['node_version'], NodeVersionManager::KNOWN_VERSIONS, true)
@@ -201,7 +199,7 @@ class NewProjectDetector
 
     protected function defaultPhpVersion(): string
     {
-        $knownVersions = self::KNOWN_PHP_VERSIONS;
+        $knownVersions = PhpVersions::installed();
         $latest = end($knownVersions);
 
         $configured = Setting::get('default_php_version', $latest);
